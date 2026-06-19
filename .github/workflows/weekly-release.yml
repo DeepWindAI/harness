@@ -145,7 +145,11 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          ARCHIVE="deepwind-harness-${TAG}.tar.gz"
+          # Stable filename across releases — lets the marketing site link to
+          # https://github.com/.../releases/latest/download/deepwind-harness.tar.gz
+          # without changing per-version. The bundle's own VERSION file inside
+          # the tarball records which version was built.
+          ARCHIVE="deepwind-harness.tar.gz"
           tar --exclude='./.git' --exclude='./.github' --exclude='./.gitignore' \
               --exclude='*.tar.gz' \
               -czf "$ARCHIVE" .
