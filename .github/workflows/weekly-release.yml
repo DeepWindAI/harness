@@ -1,0 +1,218 @@
+# Weekly auto-release
+#
+# Every Monday 14:00 UTC (~7am Pacific), bumps the patch version, tags, builds
+# a `deepwind-harness-vX.Y.Z.tar.gz`, and creates a GitHub Release with the
+# tarball as an asset.
+#
+# Also runs on manual dispatch via the Actions UI (Run workflow → main),
+# and on any pushed tag matching `v*` (for human-driven minor/major releases).
+#
+# Security posture:
+#   - All `${{ ... }}` expressions that include user-controllable text
+#     (workflow_dispatch inputs, tag names, etc.) are passed via the `env:`
+#     block and dereferenced as shell variables. Never interpolated into
+#     `run:` script bodies directly.
+#   - `inputs.bump` is a choice type (patch/minor/major) — additionally
+#     validated by the case statement.
+#   - `inputs.reason` is free-text; treated as untrusted, written to a file,
+#     never used in a command context.
+
+name: weekly-release
+
+on:
+  schedule:
+    # Monday 14:00 UTC = 7am PT / 10am ET. Cron timezone is always UTC.
+    - cron: '0 14 * * 1'
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Version bump kind'
+        required: false
+        default: 'patch'
+        type: choice
+        options: [ patch, minor, major ]
+      reason:
+        description: 'Reason for manual release (appears in release notes)'
+        required: false
+        default: 'Manual release'
+        type: string
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write   # commit VERSION bump, push tag, create Release
+
+jobs:
+  bump-and-release:
+    # Schedule + manual paths bump the version. Tag-push runs go straight to
+    # build-and-release below.
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      tag: ${{ steps.bump.outputs.tag }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "deepwind-bot"
+          git config user.email "deepwind-bot@users.noreply.github.com"
+
+      - name: Bump VERSION
+        id: bump
+        env:
+          INPUT_BUMP: ${{ github.event.inputs.bump || 'patch' }}
+        run: |
+          set -euo pipefail
+          OLD=$(cat VERSION | tr -d '[:space:]')
+
+          # Belt-and-suspenders: workflow_dispatch's choice type already
+          # restricts INPUT_BUMP to {patch, minor, major}, but validate anyway.
+          case "$INPUT_BUMP" in
+            patch|minor|major) ;;
+            *) echo "invalid bump kind: '$INPUT_BUMP'" >&2; exit 2 ;;
+          esac
+
+          IFS='.' read -r MAJ MIN PAT <<< "$OLD"
+          case "$INPUT_BUMP" in
+            major) MAJ=$((MAJ+1)); MIN=0; PAT=0 ;;
+            minor) MIN=$((MIN+1)); PAT=0 ;;
+            patch) PAT=$((PAT+1)) ;;
+          esac
+          NEW="$MAJ.$MIN.$PAT"
+          echo "$NEW" > VERSION
+          echo "  bumped: $OLD → $NEW ($INPUT_BUMP)"
+          echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
+
+      - name: Commit + tag + push
+        env:
+          NEW_VERSION: ${{ steps.bump.outputs.new_version }}
+          TAG: ${{ steps.bump.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git add VERSION
+          git commit -m "release: ${TAG} (weekly auto-bump)" || { echo "no changes — exiting"; exit 0; }
+          git tag -a "${TAG}" -m "${TAG} — weekly auto-release"
+          git push origin main
+          git push origin "${TAG}"
+
+  build-and-release:
+    needs: [ bump-and-release ]
+    if: |
+      always() && (
+        github.event_name == 'push' ||
+        (needs.bump-and-release.result == 'success' && needs.bump-and-release.outputs.tag != '')
+      )
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          BUMP_TAG: ${{ needs.bump-and-release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "push" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="$BUMP_TAG"
+          fi
+          # Validate tag format: vMAJOR.MINOR.PATCH with optional -prerelease.
+          # Prevents shell metacharacters / path-traversal in subsequent steps.
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+]+)?$'; then
+            echo "invalid tag format: '$TAG'" >&2
+            exit 2
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "  building release for $TAG"
+
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+          fetch-depth: 1
+
+      - name: Build tarball
+        id: build
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="deepwind-harness-${TAG}.tar.gz"
+          tar --exclude='./.git' --exclude='./.github' --exclude='./.gitignore' \
+              --exclude='*.tar.gz' \
+              -czf "$ARCHIVE" .
+          SHA=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
+          SIZE=$(wc -c < "$ARCHIVE" | awk '{print $1}')
+          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+          echo "sha256=$SHA"      >> "$GITHUB_OUTPUT"
+          echo "size=$SIZE"       >> "$GITHUB_OUTPUT"
+          echo "  built $ARCHIVE — $SIZE bytes, sha256=$SHA"
+
+      - name: Write release notes
+        id: notes
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          ARCHIVE: ${{ steps.build.outputs.archive }}
+          SHA: ${{ steps.build.outputs.sha256 }}
+          SIZE: ${{ steps.build.outputs.size }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          REASON: ${{ github.event.inputs.reason || '' }}
+        run: |
+          set -euo pipefail
+          NOTES=$(mktemp)
+          SIZE_HUMAN=$(printf '%d' "$SIZE" | numfmt --to=iec)
+          # REASON is free-form workflow_dispatch input — treated as untrusted
+          # markdown body. Written to file via $REASON env (no shell interp).
+          {
+            echo "## Install"
+            echo ""
+            echo '```bash'
+            echo "curl -fsSL https://deepwind.ai/install/deepwind-init.sh | bash"
+            echo '```'
+            echo ""
+            echo "## Full package (offline install)"
+            echo ""
+            echo "- **\`${ARCHIVE}\`** (${SIZE_HUMAN} gzipped)"
+            echo "- SHA-256: \`${SHA}\`"
+            echo ""
+            echo '```bash'
+            echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ARCHIVE} -o ${ARCHIVE}"
+            echo "echo \"${SHA}  ${ARCHIVE}\" | shasum -a 256 -c -"
+            echo "mkdir deepwind-harness && tar -xzf ${ARCHIVE} -C deepwind-harness && cd deepwind-harness"
+            echo "./install.sh"
+            echo '```'
+            if [ -n "$REASON" ]; then
+              echo ""
+              echo "## Notes"
+              echo ""
+              # Print REASON verbatim using printf %s — no shell interp,
+              # no command substitution. Markdown injection by an attacker
+              # who has workflow_dispatch perms is possible but they already
+              # have repo write; it's a non-escalation surface.
+              printf '%s\n' "$REASON"
+            fi
+          } > "$NOTES"
+          echo "notes_file=$NOTES" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release + upload asset
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          ARCHIVE: ${{ steps.build.outputs.archive }}
+          NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+        run: |
+          set -euo pipefail
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            gh release edit "${TAG}" --notes-file "${NOTES_FILE}"
+          else
+            gh release create "${TAG}" --title "${TAG}" --notes-file "${NOTES_FILE}"
+          fi
+          gh release upload "${TAG}" "${ARCHIVE}" --clobber
