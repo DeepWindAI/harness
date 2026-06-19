@@ -1,0 +1,96 @@
+{
+  "id": "FEAT-XXX",
+  "name": "Feature Name",
+  "description": "Detailed description of what this feature does",
+  "status": "pending",
+  "estimatedHours": 2,
+  "phase": "Phase 1: Foundation",
+  "dependencies": [],
+  "acceptanceCriteria": [
+    "Criterion 1: Component renders without errors",
+    "Criterion 2: All props validated",
+    "Criterion 3: Tests achieve 95%+ coverage"
+  ],
+  "testScenarios": [
+    "Scenario 1: User opens dialog via button",
+    "Scenario 2: User submits valid form data",
+    "Scenario 3: User cancels dialog",
+    "Scenario 4: Error handling displays properly"
+  ],
+  "technicalNotes": "Implementation details, patterns to follow, references to existing code",
+  "validation_criteria": {
+    "file": "/path/to/Component.tsx",
+    "tests": "/path/to/__tests__/Component.test.tsx",
+    "min_coverage": 95,
+    "type_check": true,
+    "contracts": "/server/contracts/feature.contract.ts"
+  },
+  "integration_requirements": {
+    "required": false,
+    "parent_component": "/path/to/ParentComponent.tsx",
+    "integration_type": "dialog|panel|section|form",
+    "trigger_location": "Section header | Button area | Inline | Modal trigger",
+    "trigger_component": "Button label or element that triggers this component",
+    "state_required": [
+      "const [dialogOpen, setDialogOpen] = useState(false)",
+      "const [selectedItem, setSelectedItem] = useState(null)",
+      "const [formData, setFormData] = useState({})"
+    ],
+    "import_statement": "import ComponentName from './ComponentName'",
+    "props_to_pass": [
+      "open={dialogOpen}",
+      "onClose={() => setDialogOpen(false)}",
+      "data={selectedItem}",
+      "onSave={handleSave}",
+      "onCancel={handleCancel}"
+    ],
+    "integration_verification": [
+      "Import statement exists in parent component",
+      "State variables declared in parent",
+      "Trigger button/element renders in correct location",
+      "Component renders with all required props",
+      "Component functionally integrated (can open/close, data flows)",
+      "TypeScript validation passes for parent and child",
+      "No console errors when interacting with component"
+    ]
+  },
+  "tdd_phases": {
+    "RED": {
+      "status": "pending",
+      "description": "Write failing tests first",
+      "tests_written": [],
+      "started_at": null,
+      "completed_at": null
+    },
+    "GREEN": {
+      "status": "pending",
+      "description": "Implement minimum code to pass tests",
+      "implementation_files": [],
+      "started_at": null,
+      "completed_at": null
+    },
+    "REFACTOR": {
+      "status": "pending",
+      "description": "Improve code quality while keeping tests passing",
+      "refactorings": [],
+      "started_at": null,
+      "completed_at": null
+    },
+    "DELIVERY": {
+      "status": "pending",
+      "description": "Quality gates, documentation, commit",
+      "quality_gates": {
+        "type_check": false,
+        "eslint": false,
+        "tests": false,
+        "coverage": 0
+      },
+      "started_at": null,
+      "completed_at": null
+    }
+  },
+  "gitCommit": null,
+  "completedAt": null,
+  "specialist": null,
+  "notes": []
+}

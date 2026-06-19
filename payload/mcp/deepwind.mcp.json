@@ -1,0 +1,8 @@
+{
+  "url": "https://mcp.deepwind.ai/v1/sse",
+  "transport": "sse",
+  "metadata": {
+    "name": "DeepWind",
+    "description": "DeepWind backlog, work items, and squad tools"
+  }
+}

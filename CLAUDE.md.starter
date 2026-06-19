@@ -1,0 +1,107 @@
+# DeepWind — Claude Code conventions starter
+
+This file is a starter `CLAUDE.md` for projects adopting the DeepWind conventions
+that ship via `curl -fsSL https://pm-33.com/install | bash`.
+
+Copy this into the root of your project (or merge into your existing
+`CLAUDE.md`) so every Claude Code session in this project picks up the
+shared rules.
+
+---
+
+## Harness discipline
+
+For any work estimated at **16+ hours across 3+ sessions** with **3+ logical
+phases**, prefer a harness project over a single-session task. The harness
+framework lives at `~/deepwind-frameworks/` (installed by the DeepWind bundle).
+
+- Use the `harness-discovery` skill for initial scoping.
+- Use the `harness-planner` skill (or `harness-planner-agent`) to break the
+  project into phased tasks.
+- Use the `harness-coordinator` agent for any session that's orchestrating
+  multi-specialist work. The coordinator **never** writes code directly —
+  it dispatches specialists via the Task tool.
+- Specialists run the `harness-discipline` skill: per-agent git worktrees,
+  TDD discipline (RED → GREEN → REFACTOR → DELIVERY), evidence on every
+  step.
+
+For one-shot work (<8 hrs, single phase), just do the work directly. The
+harness is overhead that pays back over multi-session projects, not under
+them.
+
+## Multi-specialist spec review
+
+Before implementing any non-trivial spec, run the **`gauntlet-review`**
+skill. Different specialists (backend, security, performance, AI engineer,
+etc.) review the same spec adversarially and surface problems primary
+implementers tend to miss.
+
+Trigger: say *"gauntlet review this spec"* (with the spec path) and the
+skill orchestrates the parallel review.
+
+## DeepWind MCP tool usage
+
+**BEFORE the first `mcp__pm33-staging__pm33_*` tool call in a session,
+invoke `Skill({ skill: "deepwind-mcp" })`.** That skill (installed by the DeepWind
+bundle into `~/.claude/skills/pm33-mcp/`) captures tool routing, the 9
+known gaps (5000-char description cap, `score_alignment` is keyword-only,
+MCP intermittent disconnect, etc.), batch-creation patterns, canonical
+parent UUIDs, and the queue-and-execute pattern for MCP instability.
+
+Skip the invoke only if you've already loaded the skill earlier in the
+same session. The skill is cheap to read and prevents repeated rediscovery
+of conventions.
+
+Common tools after loading the skill:
+- `pm33_create_work_item` — bug fixes, features, improvements
+- `pm33_create_brief` — agent-dispatched structured units (preferred over
+  `create_work_item type='story'` for AI-executable work)
+- `pm33_create_idea` — backlog items not yet committed
+- `pm33_update_work_item` — bump priority, link to parent epic, change description
+- `pm33_query_backlog` — find existing items before duplicating
+
+If the DeepWind MCP isn't connected, type `/mcp` in Claude Code and authenticate
+to **claude.ai DeepWind** — then restart the session so the `mcp__pm33-staging__*`
+tools register.
+
+## Test execution discipline
+
+- **Run tests locally**, never via SSH (SSH sessions hang).
+- Default test runner per project varies; prefer the project's `npm test`
+  / `pytest` / etc. wrapper script if one exists.
+- Don't run more than 2 concurrent test-node processes on a dev machine.
+- Clean up hung processes after a test session
+  (`pkill -f "vitest|playwright|jest"` if needed).
+
+## Git: stage explicit paths
+
+When multiple Claude Code sessions or agents may be running concurrently,
+never use `git add .` or `git add -A` — they sweep up files from other
+agents. Always stage exact paths:
+
+```
+git add path/to/file1.ts path/to/file2.ts
+```
+
+For full multi-agent isolation, use per-agent git worktrees (the
+`harness-discipline` skill walks through the setup).
+
+## Honesty over confidence
+
+When a tool result conflicts with your assumption, trust the tool result
+and revise. When you're not sure, say "I don't know" or "I haven't
+verified" instead of pattern-matching from prior context. Particularly for:
+
+- Schema state (always re-check `\d <table>` if there's any doubt)
+- Deploy status (always re-check Vercel/Railway status, never assume)
+- Branch state (always re-check `git log origin/main` vs local)
+
+The cost of a wrong-but-confident answer compounds across the session;
+the cost of "let me re-verify" is one tool call.
+
+---
+
+**This is a starter file.** Edit, extend, or replace as your project's
+conventions evolve. DeepWind's full reference `CLAUDE.md` lives in the
+pm-33-core repo and is not bundled — it contains many project-specific
+rules that don't generalize.

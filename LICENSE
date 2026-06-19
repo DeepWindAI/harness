@@ -1,0 +1,38 @@
+MIT License
+
+Copyright (c) 2026 PM33 (b33.tech)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+This license covers PM33-authored portions of this repository:
+- agents/harness-coordinator.md
+- agents/harness-planner-agent.md
+- skills/* (all 7 SKILL.md files)
+- frameworks/*
+- CLAUDE.md.starter
+- README.md
+- install.sh
+
+The 10 specialist agents in `agents/` (ai-engineer.md, api-documenter.md,
+backend-architect.md, code-reviewer.md, database-admin.md,
+frontend-developer.md, performance-engineer.md, security-auditor.md,
+test-automator.md, ui-ux-designer.md) are from wshobson/agents and are
+licensed separately — see agents/LICENSE.wshobson.
