@@ -53,7 +53,7 @@ jobs:
       tag: ${{ steps.bump.outputs.tag }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
@@ -134,7 +134,7 @@ jobs:
           echo "  building release for $TAG"
 
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 1
@@ -149,16 +149,23 @@ jobs:
           # https://github.com/.../releases/latest/download/deepwind-harness.tar.gz
           # without changing per-version. The bundle's own VERSION file inside
           # the tarball records which version was built.
-          ARCHIVE="deepwind-harness.tar.gz"
+          NAME="deepwind-harness.tar.gz"
+          # Build INTO /tmp (not the source dir) to avoid the
+          # `tar: file changed as we read it` warning that fires when the
+          # output file is being written into the directory tar is reading.
+          # GNU tar exits 1 on that warning. /tmp is a different filesystem
+          # but supports rename via cp+rm, so we copy back at the end.
+          OUT="/tmp/${NAME}"
           tar --exclude='./.git' --exclude='./.github' --exclude='./.gitignore' \
               --exclude='*.tar.gz' \
-              -czf "$ARCHIVE" .
-          SHA=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
-          SIZE=$(wc -c < "$ARCHIVE" | awk '{print $1}')
-          echo "archive=$ARCHIVE" >> "$GITHUB_OUTPUT"
+              -czf "$OUT" .
+          cp "$OUT" "./${NAME}"
+          SHA=$(shasum -a 256 "./${NAME}" | awk '{print $1}')
+          SIZE=$(wc -c < "./${NAME}" | awk '{print $1}')
+          echo "archive=${NAME}" >> "$GITHUB_OUTPUT"
           echo "sha256=$SHA"      >> "$GITHUB_OUTPUT"
           echo "size=$SIZE"       >> "$GITHUB_OUTPUT"
-          echo "  built $ARCHIVE — $SIZE bytes, sha256=$SHA"
+          echo "  built ${NAME} — $SIZE bytes, sha256=$SHA"
 
       - name: Write release notes
         id: notes
