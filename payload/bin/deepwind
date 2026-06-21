@@ -9,8 +9,10 @@
 # Commands:
 #   deepwind status         Show installed version, latest available, last check
 #   deepwind update         Run the installer to upgrade in place
+#                             flags: --quiet --if-newer --skip-if-claude-running
 #   deepwind doctor         Validate install state (~/.claude/skills/, MCP, etc.)
 #   deepwind enable-cron    Opt in to daily auto-update via launchd/systemd
+#                             (cron uses --skip-if-claude-running by default)
 #   deepwind disable-cron   Remove the cron entry
 #   deepwind version        Print local installed version
 #   deepwind help           Print this help
@@ -53,6 +55,29 @@ remote_version() {
   # 2s timeout — never block on a slow network
   curl -fsSL --max-time 2 "$DEEPWIND_VERSION_MANIFEST_URL" 2>/dev/null \
     | tr -d '[:space:]'
+}
+
+# True if any process whose command line looks like Claude Code (the desktop
+# app, the CLI, or VS Code with the Claude extension) is currently running.
+# Excludes our own process tree so 'deepwind' run from Claude Code's bash tool
+# doesn't trigger a false positive that would deadlock manual updates.
+claude_code_running() {
+  local self_pid=$$
+  local parent_pid
+  parent_pid=$(ps -o ppid= -p "$self_pid" 2>/dev/null | tr -d ' ')
+
+  # Build a list of pids whose command line mentions Claude Code surfaces,
+  # excluding our own pid + immediate parent. Use word boundaries to avoid
+  # matching e.g. 'claude.md' file paths in editors.
+  ps -axo pid=,command= 2>/dev/null \
+    | awk -v self="$self_pid" -v parent="$parent_pid" '
+        $1 == self   { next }
+        $1 == parent { next }
+        # Match the canonical Claude Code launcher / extension / agent binary
+        # names. Tune here if false-positives surface.
+        /[Cc]laude[ -]?[Cc]ode|claude\.app|claude-code-cli|claude-agent/ { found=1 }
+        END { exit (found ? 0 : 1) }
+      '
 }
 
 # `sort -V`-based strict comparison. Returns 0 if $1 > $2, 1 otherwise.
@@ -105,14 +130,29 @@ cmd_status() {
 }
 
 cmd_update() {
-  local quiet=0 if_newer=0
+  local quiet=0 if_newer=0 skip_if_claude=0
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --quiet)     quiet=1; shift ;;
-      --if-newer)  if_newer=1; shift ;;
-      *)           shift ;;
+      --quiet)                  quiet=1; shift ;;
+      --if-newer)               if_newer=1; shift ;;
+      --skip-if-claude-running) skip_if_claude=1; shift ;;
+      *)                        shift ;;
     esac
   done
+
+  # Safety: refuse to update while Claude Code (or any agent that may be
+  # mid-feature with currently-loaded skills) is active. Used by the cron
+  # entry to avoid swapping skill files under a running session.
+  #
+  # Detection: any process whose argv contains 'claude' AND isn't ourselves
+  # OR our parent shell. False positives are possible (e.g., a docs editor
+  # with 'claude' in a filename) — that's fine; opt-in flag, default-off.
+  if [[ "$skip_if_claude" -eq 1 ]]; then
+    if claude_code_running; then
+      [[ "$quiet" -eq 0 ]] && dim "Claude Code appears to be running — skipping update"
+      return 0
+    fi
+  fi
 
   if [[ "$if_newer" -eq 1 ]]; then
     local local_v remote_v
@@ -250,6 +290,7 @@ enable_launchd() {
     <string>update</string>
     <string>--quiet</string>
     <string>--if-newer</string>
+    <string>--skip-if-claude-running</string>
   </array>
   <key>StartCalendarInterval</key>
   <dict>
@@ -293,7 +334,7 @@ Description=DeepWind harness auto-update
 
 [Service]
 Type=oneshot
-ExecStart=${self} update --quiet --if-newer
+ExecStart=${self} update --quiet --if-newer --skip-if-claude-running
 UNIT
   cat > "$unit_dir/deepwind-update.timer" <<UNIT
 [Unit]
