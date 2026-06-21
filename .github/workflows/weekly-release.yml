@@ -137,7 +137,68 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ steps.tag.outputs.tag }}
-          fetch-depth: 1
+          fetch-depth: 0  # need main history for the optional VERSION-sync below
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Self-correct VERSION to match tag
+        # Reason: when triggered by a manual `git tag v1.x.y && git push --tags`
+        # (bypassing the bump-and-release job), the checked-out tag's tree may
+        # have a stale VERSION. We force-write VERSION to match the tag name
+        # so the tarball's internal VERSION file is always consistent with the
+        # release that ships it. This step is a no-op when bump-and-release
+        # ran first (VERSION is already correct in that case).
+        #
+        # Defect surfaced 2026-06-21 when v1.0.1 release shipped a tarball
+        # containing VERSION=1.0.0, breaking the version-check banner.
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION_FROM_TAG="${TAG#v}"
+          CURRENT=$(cat VERSION | tr -d '[:space:]' 2>/dev/null || echo "")
+          if [ "$CURRENT" != "$VERSION_FROM_TAG" ]; then
+            echo "  syncing VERSION: $CURRENT → $VERSION_FROM_TAG (from tag $TAG)"
+            echo "$VERSION_FROM_TAG" > VERSION
+          else
+            echo "  VERSION already matches tag ($VERSION_FROM_TAG)"
+          fi
+
+      - name: Sync VERSION on main when triggered by tag push
+        # When this workflow fires from `on: push: tags:` (manual tag push),
+        # main's VERSION may still be ahead-of/behind the tag because
+        # bump-and-release didn't run. Update main to match so future cron
+        # runs bump from the right baseline + the website's /install/VERSION
+        # endpoint reflects what's actually published.
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          VERSION_FROM_TAG="${TAG#v}"
+          git fetch origin main --quiet
+          git checkout origin/main -- VERSION 2>/dev/null || true
+          MAIN_CURRENT=$(cat VERSION | tr -d '[:space:]' 2>/dev/null || echo "")
+          if [ "$MAIN_CURRENT" = "$VERSION_FROM_TAG" ]; then
+            echo "  main's VERSION already matches; no sync needed"
+            # restore the tag's tree before the build step reads it
+            git checkout "${TAG}" -- VERSION 2>/dev/null || echo "$VERSION_FROM_TAG" > VERSION
+            exit 0
+          fi
+          echo "  main's VERSION=$MAIN_CURRENT, tag is $VERSION_FROM_TAG — pushing sync commit"
+          # Write the new VERSION + commit on a temp branch, then push to main
+          git config user.name "deepwind-bot"
+          git config user.email "deepwind-bot@users.noreply.github.com"
+          # Recover to tag tree first (we trashed VERSION via checkout origin/main)
+          echo "$VERSION_FROM_TAG" > VERSION
+          # Push the sync commit onto main directly
+          BRANCH="sync-version-${TAG}"
+          git checkout -b "$BRANCH" "origin/main"
+          echo "$VERSION_FROM_TAG" > VERSION
+          git add VERSION
+          git commit -m "release: sync VERSION to $TAG (tag-push self-correction)" || { echo "  no changes"; exit 0; }
+          git push origin "HEAD:main"
+          # Back to the tag for build step
+          git checkout "${TAG}"
 
       - name: Build tarball
         id: build
