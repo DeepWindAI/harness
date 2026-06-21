@@ -1,0 +1,5 @@
+# Build artifacts — created by weekly-release.yml; should never be committed
+*.tar.gz
+
+# OS junk
+.DS_Store
