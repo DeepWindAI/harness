@@ -1,0 +1,353 @@
+#!/usr/bin/env bash
+# deepwind — DeepWind CLI client.
+#
+# Standalone CLI for managing a DeepWind install outside of a running Claude
+# Code session. Installed by deepwind-init.sh to ~/.deepwind/bin/deepwind +
+# symlinked to /usr/local/bin/deepwind (or ~/.local/bin/deepwind if root not
+# writable).
+#
+# Commands:
+#   deepwind status         Show installed version, latest available, last check
+#   deepwind update         Run the installer to upgrade in place
+#   deepwind doctor         Validate install state (~/.claude/skills/, MCP, etc.)
+#   deepwind enable-cron    Opt in to daily auto-update via launchd/systemd
+#   deepwind disable-cron   Remove the cron entry
+#   deepwind version        Print local installed version
+#   deepwind help           Print this help
+#
+# Auto-update behavior:
+#   Default is OPT-IN. The installer does NOT enable cron-driven updates
+#   unless you run `deepwind enable-cron`. This avoids surprise updates
+#   landing during an active Claude Code session.
+#
+# Environment overrides:
+#   DEEPWIND_INSTALL_DIR    Where the version marker lives (default ~/.deepwind/install)
+#   DEEPWIND_VERSION_MANIFEST_URL  Override the remote VERSION URL
+#   DEEPWIND_INIT_URL       Override the installer URL (for forks/staging)
+
+set -euo pipefail
+
+DEEPWIND_INSTALL_DIR="${DEEPWIND_INSTALL_DIR:-$HOME/.deepwind/install}"
+DEEPWIND_CACHE_DIR="${HOME}/.cache/deepwind"
+DEEPWIND_VERSION_MANIFEST_URL="${DEEPWIND_VERSION_MANIFEST_URL:-https://raw.githubusercontent.com/DeepWindAI/harness/main/VERSION}"
+DEEPWIND_INIT_URL="${DEEPWIND_INIT_URL:-https://deepwind.ai/install/deepwind-init.sh}"
+
+bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
+ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
+warn()  { printf '  \033[33m!\033[0m %s\n' "$*" >&2; }
+err()   { printf '  \033[31m✗\033[0m %s\n' "$*" >&2; }
+dim()   { printf '  \033[2m%s\033[0m\n' "$*"; }
+
+# ----------------------------------------------------------------------------
+# Helpers
+# ----------------------------------------------------------------------------
+local_version() {
+  if [[ -f "$DEEPWIND_INSTALL_DIR/VERSION" ]]; then
+    tr -d '[:space:]' < "$DEEPWIND_INSTALL_DIR/VERSION"
+  else
+    echo ""
+  fi
+}
+
+remote_version() {
+  # 2s timeout — never block on a slow network
+  curl -fsSL --max-time 2 "$DEEPWIND_VERSION_MANIFEST_URL" 2>/dev/null \
+    | tr -d '[:space:]'
+}
+
+# `sort -V`-based strict comparison. Returns 0 if $1 > $2, 1 otherwise.
+is_newer() {
+  local a="$1" b="$2"
+  [[ "$a" == "$b" ]] && return 1
+  local lower
+  lower=$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -n1)
+  [[ "$lower" == "$b" ]]
+}
+
+# ----------------------------------------------------------------------------
+# Commands
+# ----------------------------------------------------------------------------
+cmd_status() {
+  local local_v remote_v installed_at
+  local_v=$(local_version)
+  remote_v=$(remote_version)
+
+  bold "DeepWind status"
+  if [[ -z "$local_v" ]]; then
+    err "no installed version found at $DEEPWIND_INSTALL_DIR/VERSION"
+    dim "run 'deepwind update' to install"
+    return 1
+  fi
+  ok "installed:  $local_v"
+  if [[ -n "$remote_v" ]]; then
+    if [[ "$local_v" == "$remote_v" ]]; then
+      ok "latest:     $remote_v (up to date)"
+    elif is_newer "$remote_v" "$local_v"; then
+      warn "latest:     $remote_v (update available — run 'deepwind update')"
+    else
+      dim "latest:     $remote_v (you are on a newer/pre-release build)"
+    fi
+  else
+    warn "latest:     (unreachable — check network)"
+  fi
+
+  if [[ -f "$DEEPWIND_INSTALL_DIR/INSTALLED_AT" ]]; then
+    installed_at=$(cat "$DEEPWIND_INSTALL_DIR/INSTALLED_AT")
+    ok "installed_at: $installed_at"
+  fi
+
+  # Cron status
+  if cron_enabled; then
+    ok "auto-update: enabled (daily)"
+  else
+    dim "auto-update: disabled — run 'deepwind enable-cron' to opt in"
+  fi
+}
+
+cmd_update() {
+  local quiet=0 if_newer=0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --quiet)     quiet=1; shift ;;
+      --if-newer)  if_newer=1; shift ;;
+      *)           shift ;;
+    esac
+  done
+
+  if [[ "$if_newer" -eq 1 ]]; then
+    local local_v remote_v
+    local_v=$(local_version)
+    remote_v=$(remote_version)
+    if [[ -z "$remote_v" ]] || [[ -z "$local_v" ]] || ! is_newer "$remote_v" "$local_v"; then
+      [[ "$quiet" -eq 0 ]] && dim "up to date ($local_v); skipping"
+      return 0
+    fi
+  fi
+
+  [[ "$quiet" -eq 0 ]] && bold "Running installer from $DEEPWIND_INIT_URL"
+  if [[ "$quiet" -eq 1 ]]; then
+    curl -fsSL "$DEEPWIND_INIT_URL" | bash >/dev/null 2>&1
+  else
+    curl -fsSL "$DEEPWIND_INIT_URL" | bash
+  fi
+}
+
+cmd_doctor() {
+  bold "DeepWind doctor"
+  local issues=0
+
+  # 1. VERSION marker
+  if [[ -f "$DEEPWIND_INSTALL_DIR/VERSION" ]]; then
+    ok "version marker: $DEEPWIND_INSTALL_DIR/VERSION"
+  else
+    err "version marker missing: $DEEPWIND_INSTALL_DIR/VERSION"
+    issues=$((issues+1))
+  fi
+
+  # 2. Skills dir
+  local skills_dir="$HOME/.claude/skills"
+  local expected_skills=( harness-coordinator harness-discipline harness-planner harness-prep harness-discovery harness-research gauntlet-review deepwind-mcp deepwind-mcp-queue )
+  for s in "${expected_skills[@]}"; do
+    if [[ -d "$skills_dir/$s" ]]; then
+      ok "skill: $s"
+    else
+      err "skill missing: $skills_dir/$s — run 'deepwind update'"
+      issues=$((issues+1))
+    fi
+  done
+
+  # 3. MCP config entry
+  if [[ -f "$HOME/.claude.json" ]] && command -v jq >/dev/null 2>&1; then
+    if jq -e '.mcpServers.deepwind' "$HOME/.claude.json" >/dev/null 2>&1; then
+      ok "MCP entry: ~/.claude.json (mcpServers.deepwind)"
+    else
+      err "MCP entry missing in ~/.claude.json — run 'deepwind update'"
+      issues=$((issues+1))
+    fi
+  else
+    warn "skipping MCP check (~/.claude.json missing or jq unavailable)"
+  fi
+
+  # 4. Hook
+  local hook="$HOME/.claude/hooks/session-start-deepwind-version-check.sh"
+  if [[ -x "$hook" ]]; then
+    ok "session-start hook: present + executable"
+  else
+    warn "session-start hook not installed at $hook (banner won't fire on Claude Code start)"
+  fi
+
+  # 5. PATH check for ourselves
+  if command -v deepwind >/dev/null 2>&1; then
+    ok "deepwind CLI on PATH: $(command -v deepwind)"
+  else
+    warn "deepwind CLI not on PATH"
+  fi
+
+  echo ""
+  if [[ "$issues" -eq 0 ]]; then
+    bold "All checks passed."
+  else
+    bold "$issues issue(s) found. Run 'deepwind update' to repair."
+    return 1
+  fi
+}
+
+# ----------------------------------------------------------------------------
+# Cron — opt-in daily auto-update
+# ----------------------------------------------------------------------------
+launchd_plist_path() { echo "$HOME/Library/LaunchAgents/io.deepwind.update.plist"; }
+systemd_unit_dir()   { echo "$HOME/.config/systemd/user"; }
+
+cron_enabled() {
+  case "$(uname -s)" in
+    Darwin)
+      [[ -f "$(launchd_plist_path)" ]] && \
+        launchctl list 2>/dev/null | grep -q '^[^[:space:]]*[[:space:]]*[^[:space:]]*[[:space:]]*io\.deepwind\.update$'
+      ;;
+    Linux)
+      [[ -f "$(systemd_unit_dir)/deepwind-update.timer" ]] && \
+        systemctl --user is-enabled deepwind-update.timer >/dev/null 2>&1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+cmd_enable_cron() {
+  case "$(uname -s)" in
+    Darwin) enable_launchd ;;
+    Linux)  enable_systemd ;;
+    *) err "auto-update cron not supported on $(uname -s)"; return 1 ;;
+  esac
+}
+
+cmd_disable_cron() {
+  case "$(uname -s)" in
+    Darwin) disable_launchd ;;
+    Linux)  disable_systemd ;;
+    *) err "auto-update cron not supported on $(uname -s)"; return 1 ;;
+  esac
+}
+
+enable_launchd() {
+  local plist
+  plist=$(launchd_plist_path)
+  local self
+  self=$(command -v deepwind)
+  if [[ -z "$self" ]]; then
+    err "can't find 'deepwind' on PATH — installer didn't symlink it?"
+    return 1
+  fi
+  mkdir -p "$(dirname "$plist")"
+  cat > "$plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>io.deepwind.update</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>${self}</string>
+    <string>update</string>
+    <string>--quiet</string>
+    <string>--if-newer</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key><integer>9</integer>
+    <key>Minute</key><integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key><string>${HOME}/.cache/deepwind/cron.out.log</string>
+  <key>StandardErrorPath</key><string>${HOME}/.cache/deepwind/cron.err.log</string>
+</dict>
+</plist>
+PLIST
+  mkdir -p "$HOME/.cache/deepwind"
+  launchctl unload "$plist" 2>/dev/null || true
+  launchctl load "$plist"
+  ok "launchd job installed: $plist"
+  ok "runs daily at 09:00 local; logs at ~/.cache/deepwind/cron.{out,err}.log"
+  ok "disable with: deepwind disable-cron"
+}
+
+disable_launchd() {
+  local plist
+  plist=$(launchd_plist_path)
+  if [[ ! -f "$plist" ]]; then
+    dim "no launchd job installed"
+    return 0
+  fi
+  launchctl unload "$plist" 2>/dev/null || true
+  rm -f "$plist"
+  ok "launchd job removed: $plist"
+}
+
+enable_systemd() {
+  local unit_dir
+  unit_dir=$(systemd_unit_dir)
+  mkdir -p "$unit_dir"
+  local self
+  self=$(command -v deepwind)
+  cat > "$unit_dir/deepwind-update.service" <<UNIT
+[Unit]
+Description=DeepWind harness auto-update
+
+[Service]
+Type=oneshot
+ExecStart=${self} update --quiet --if-newer
+UNIT
+  cat > "$unit_dir/deepwind-update.timer" <<UNIT
+[Unit]
+Description=Run DeepWind harness auto-update daily
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target
+UNIT
+  systemctl --user daemon-reload
+  systemctl --user enable --now deepwind-update.timer
+  ok "systemd timer installed at $unit_dir/deepwind-update.timer"
+  ok "runs daily at 09:00 local"
+  ok "disable with: deepwind disable-cron"
+}
+
+disable_systemd() {
+  systemctl --user disable --now deepwind-update.timer 2>/dev/null || true
+  rm -f "$(systemd_unit_dir)/deepwind-update.timer" "$(systemd_unit_dir)/deepwind-update.service"
+  systemctl --user daemon-reload 2>/dev/null || true
+  ok "systemd timer removed"
+}
+
+cmd_version() {
+  local v
+  v=$(local_version)
+  if [[ -n "$v" ]]; then
+    echo "$v"
+  else
+    echo "(not installed)"
+    return 1
+  fi
+}
+
+cmd_help() {
+  sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+# ----------------------------------------------------------------------------
+# Main
+# ----------------------------------------------------------------------------
+SUBCMD="${1:-help}"
+[[ $# -gt 0 ]] && shift
+case "$SUBCMD" in
+  status)        cmd_status "$@" ;;
+  update)        cmd_update "$@" ;;
+  doctor)        cmd_doctor "$@" ;;
+  enable-cron)   cmd_enable_cron "$@" ;;
+  disable-cron)  cmd_disable_cron "$@" ;;
+  version|--version|-v) cmd_version ;;
+  help|--help|-h) cmd_help ;;
+  *) err "unknown command: $SUBCMD"; cmd_help; exit 2 ;;
+esac

@@ -42,6 +42,7 @@ DEFAULT_REF="main"
 CLAUDE_DIR="${CLAUDE_DIR:-$HOME/.claude}"
 FRAMEWORKS_DIR="${DEEPWIND_FRAMEWORKS_DIR:-$HOME/deepwind-frameworks}"
 INSTALL_DIR="$HOME/.deepwind/install"
+BIN_DIR="$HOME/.deepwind/bin"
 CACHE_DIR="$HOME/.cache/deepwind"
 
 # ----------------------------------------------------------------------------
@@ -191,6 +192,34 @@ step_hooks() {
   warn '  { "type": "command", "command": ".claude/hooks/session-start-deepwind-version-check.sh" }'
 }
 
+step_cli() {
+  bold "CLI → $BIN_DIR/deepwind"
+  mkdir -p "$BIN_DIR"
+  fetch "payload/bin/deepwind" "$BIN_DIR/deepwind"
+  chmod +x "$BIN_DIR/deepwind"
+  ok "$BIN_DIR/deepwind"
+
+  # Try to put `deepwind` on PATH via a symlink in the first writable
+  # standard bin dir; otherwise instruct the user.
+  local linked=""
+  for dest in /usr/local/bin "$HOME/.local/bin"; do
+    if [[ -d "$dest" && -w "$dest" ]]; then
+      ln -sf "$BIN_DIR/deepwind" "$dest/deepwind"
+      linked="$dest/deepwind"
+      break
+    fi
+  done
+  if [[ -n "$linked" ]]; then
+    ok "symlinked: $linked → $BIN_DIR/deepwind"
+  else
+    warn "could not symlink into a standard PATH dir."
+    warn "add this to your shell rc:  export PATH=\"\$HOME/.deepwind/bin:\$PATH\""
+  fi
+  # Cron auto-update is OPT-IN — installer never enables it. Users run
+  # `deepwind enable-cron` themselves to opt in.
+  dim "auto-update is OFF by default; run 'deepwind enable-cron' to opt in"
+}
+
 step_version_marker() {
   mkdir -p "$INSTALL_DIR"
   local v="${RESOLVED_REF#v}"
@@ -216,6 +245,7 @@ main() {
       echo "  frameworks: $FRAMEWORKS_DIR/"
       echo "  MCP:        ~/.claude.json (mcpServers.deepwind, hosted SSE + OAuth)"
       [[ $SKIP_HOOKS -eq 0 ]] && echo "  hook:       $CLAUDE_DIR/hooks/session-start-deepwind-version-check.sh"
+      echo "  CLI:        $BIN_DIR/deepwind  (+ symlink to first writable PATH dir)"
       echo "  marker:     $INSTALL_DIR/VERSION"
       exit 0
       ;;
@@ -237,6 +267,7 @@ main() {
       step_frameworks
       step_mcp
       [[ $SKIP_HOOKS -eq 0 ]] && step_hooks
+      step_cli
       step_version_marker
       echo
       bold "Done."
@@ -246,6 +277,12 @@ main() {
       echo "    2. /mcp → \"DeepWind\" → complete OAuth"
       echo "    3. Read first: $FRAMEWORKS_DIR/README.md"
       echo "    4. Copy into your project root: $FRAMEWORKS_DIR/CLAUDE.md.starter → ./CLAUDE.md"
+      echo
+      echo "  CLI commands:"
+      echo "    deepwind status         show installed + latest available version"
+      echo "    deepwind doctor         validate install state"
+      echo "    deepwind update         re-run installer to upgrade"
+      echo "    deepwind enable-cron    opt in to daily auto-update (off by default)"
       echo
       echo "  Silence version checks: export DEEPWIND_VERSION_CHECK=0"
       ;;
