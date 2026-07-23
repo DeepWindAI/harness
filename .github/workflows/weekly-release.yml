@@ -200,66 +200,106 @@ jobs:
           # Back to the tag for build step
           git checkout "${TAG}"
 
-      - name: Build tarball
+      - name: Build immutable target archives and release manifest
         id: build
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_GPG_KEY_ID: ${{ secrets.DEEPWIND_RELEASE_GPG_KEY_ID }}
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.DEEPWIND_RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.DEEPWIND_RELEASE_GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
-          # Stable filename across releases — lets the marketing site link to
-          # https://github.com/.../releases/latest/download/deepwind-harness.tar.gz
-          # without changing per-version. The bundle's own VERSION file inside
-          # the tarball records which version was built.
-          NAME="deepwind-harness.tar.gz"
-          # Build INTO /tmp (not the source dir) to avoid the
-          # `tar: file changed as we read it` warning that fires when the
-          # output file is being written into the directory tar is reading.
-          # GNU tar exits 1 on that warning. /tmp is a different filesystem
-          # but supports rename via cp+rm, so we copy back at the end.
-          OUT="/tmp/${NAME}"
-          tar --exclude='./.git' --exclude='./.github' --exclude='./.gitignore' \
-              --exclude='*.tar.gz' \
-              -czf "$OUT" .
-          cp "$OUT" "./${NAME}"
-          SHA=$(shasum -a 256 "./${NAME}" | awk '{print $1}')
-          SIZE=$(wc -c < "./${NAME}" | awk '{print $1}')
-          echo "archive=${NAME}" >> "$GITHUB_OUTPUT"
-          echo "sha256=$SHA"      >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE"       >> "$GITHUB_OUTPUT"
-          echo "  built ${NAME} — $SIZE bytes, sha256=$SHA"
+          VERSION_FROM_TAG="${TAG#v}"
+          test "$(tr -d '[:space:]' < VERSION)" = "$VERSION_FROM_TAG"
+          test -n "$RELEASE_GPG_KEY_ID" || { echo "DEEPWIND_RELEASE_GPG_KEY_ID is required" >&2; exit 2; }
+          test -n "$RELEASE_GPG_PRIVATE_KEY" || { echo "DEEPWIND_RELEASE_GPG_PRIVATE_KEY is required" >&2; exit 2; }
+          test -n "$RELEASE_GPG_PASSPHRASE" || { echo "DEEPWIND_RELEASE_GPG_PASSPHRASE is required" >&2; exit 2; }
+          jq -e --arg key "$RELEASE_GPG_KEY_ID" '
+            .formatVersion == 1 and
+            any(.keys[]; .id == $key and .status == "active" and (.fingerprint|test("^[A-F0-9]{40}$"))) and
+            ([.revokedKeyIds[]] | index($key) | not)
+          ' release/keys/public-keyring.json >/dev/null || {
+            echo "release key is absent, inactive, malformed, or revoked in release/keys/public-keyring.json" >&2
+            exit 2
+          }
+
+          ASSETS="$RUNNER_TEMP/deepwind-release-assets"
+          export GNUPGHOME="$RUNNER_TEMP/deepwind-release-gnupg"
+          rm -rf "$ASSETS"
+          mkdir -p "$ASSETS" "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+          export SOURCE_DATE_EPOCH
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+
+          build_target() {
+            target="$1"; shift
+            output="$ASSETS/deepwind-harness-${target}-v${VERSION_FROM_TAG}.tar.gz"
+            # File arguments are an explicit allowlist.  GNU tar options make
+            # equivalent tag trees produce byte-identical archives.
+            tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+              -czf "$output" "$@"
+            BUILD_ARGS+=(--archive "${target}=${output}")
+          }
+          BUILD_ARGS=()
+          build_target claude agents skills frameworks payload CLAUDE.md.starter LICENSE VERSION
+          # The Codex archive becomes part of this same signed contract only
+          # after the Codex plugin and role pack exist (DW-003/DW-004).
+          if [ -d plugins/deepwind-harness ] && [ -d codex/agents ]; then
+            build_target codex plugins/deepwind-harness codex/agents LICENSE VERSION
+          fi
+
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
+          ACTUAL_FINGERPRINT=$(gpg --batch --with-colons --list-keys "$RELEASE_GPG_KEY_ID" | awk -F: '$1 == "fpr" { print $10; exit }')
+          EXPECTED_FINGERPRINT=$(jq -r --arg key "$RELEASE_GPG_KEY_ID" '.keys[] | select(.id == $key) | .fingerprint' release/keys/public-keyring.json)
+          test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT" || { echo "release private key fingerprint does not match committed public keyring" >&2; exit 2; }
+
+          ./release/build-manifest.sh \
+            --version "$VERSION_FROM_TAG" --channel staging \
+            --endpoint-alias deepwind-staging --endpoint-url https://dev.deepwind.ai/mcp \
+            --key-id "$RELEASE_GPG_KEY_ID" --not-before "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --not-after "$(date -u -d '+180 days' +%Y-%m-%dT%H:%M:%SZ)" \
+            --source-revision "$(git rev-parse HEAD)" --output "$ASSETS/deepwind-release-manifest.json" \
+            "${BUILD_ARGS[@]}"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" \
+            --armor --detach-sign --local-user "$RELEASE_GPG_KEY_ID" \
+            --output "$ASSETS/deepwind-release-manifest.json.asc" "$ASSETS/deepwind-release-manifest.json"
+          jq -nS --arg tag "$TAG" --arg revision "$(git rev-parse HEAD)" --arg repo "$GITHUB_REPOSITORY" \
+            '{formatVersion:1,repository:$repo,tag:$tag,revision:$revision,builder:"weekly-release.yml",manifest:"deepwind-release-manifest.json"}' \
+            > "$ASSETS/deepwind-release-provenance.json"
+          cp release/keys/public-keyring.json "$ASSETS/public-keyring.json"
+          (cd "$ASSETS" && sha256sum deepwind-* public-keyring.json) > "$ASSETS/SHA256SUMS"
+          echo "assets_dir=$ASSETS" >> "$GITHUB_OUTPUT"
+          echo "manifest_sha256=$(sha256sum "$ASSETS/deepwind-release-manifest.json" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          find "$ASSETS" -maxdepth 1 -type f -print | LC_ALL=C sort
 
       - name: Write release notes
         id: notes
         env:
           TAG: ${{ steps.tag.outputs.tag }}
-          ARCHIVE: ${{ steps.build.outputs.archive }}
-          SHA: ${{ steps.build.outputs.sha256 }}
-          SIZE: ${{ steps.build.outputs.size }}
+          MANIFEST_SHA: ${{ steps.build.outputs.manifest_sha256 }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           REASON: ${{ github.event.inputs.reason || '' }}
         run: |
           set -euo pipefail
           NOTES=$(mktemp)
-          SIZE_HUMAN=$(printf '%d' "$SIZE" | numfmt --to=iec)
           # REASON is free-form workflow_dispatch input — treated as untrusted
           # markdown body. Written to file via $REASON env (no shell interp).
           {
             echo "## Install"
             echo ""
             echo '```bash'
-            echo "curl -fsSL https://deepwind.ai/install/deepwind-init.sh | bash"
+            echo "curl -fsSL https://deepwind.ai/install | bash"
             echo '```'
             echo ""
-            echo "## Full package (offline install)"
+            echo "## Immutable release assets"
             echo ""
-            echo "- **\`${ARCHIVE}\`** (${SIZE_HUMAN} gzipped)"
-            echo "- SHA-256: \`${SHA}\`"
+            echo "- Signed manifest SHA-256: \`${MANIFEST_SHA}\`"
+            echo "- Target archives, \`SHA256SUMS\`, detached manifest signature, provenance, and public keyring are attached to this exact tag."
             echo ""
             echo '```bash'
-            echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ARCHIVE} -o ${ARCHIVE}"
-            echo "echo \"${SHA}  ${ARCHIVE}\" | shasum -a 256 -c -"
-            echo "mkdir deepwind-harness && tar -xzf ${ARCHIVE} -C deepwind-harness && cd deepwind-harness"
-            echo "./install.sh"
+            echo "curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/deepwind-release-manifest.json"
+            echo "curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/deepwind-release-manifest.json.asc"
             echo '```'
             if [ -n "$REASON" ]; then
               echo ""
@@ -274,17 +314,16 @@ jobs:
           } > "$NOTES"
           echo "notes_file=$NOTES" >> "$GITHUB_OUTPUT"
 
-      - name: Create or update release + upload asset
+      - name: Create immutable release and upload verified assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.tag.outputs.tag }}
-          ARCHIVE: ${{ steps.build.outputs.archive }}
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+          ASSETS_DIR: ${{ steps.build.outputs.assets_dir }}
         run: |
           set -euo pipefail
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release edit "${TAG}" --notes-file "${NOTES_FILE}"
-          else
-            gh release create "${TAG}" --title "${TAG}" --notes-file "${NOTES_FILE}"
+            echo "refusing to alter existing release ${TAG}; release assets are immutable" >&2
+            exit 2
           fi
-          gh release upload "${TAG}" "${ARCHIVE}" --clobber
+          gh release create "${TAG}" --title "${TAG}" --notes-file "${NOTES_FILE}" "$ASSETS_DIR"/*

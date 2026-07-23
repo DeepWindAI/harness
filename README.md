@@ -1,27 +1,27 @@
-# DeepWind Harness for Claude Code
+# DeepWind Harness
 
 **Put your Claude Code in a harness.** Free harness for any Claude Code
 project — outcome-attribution and the rest of the closed loop requires
 a [DeepWind subscription](https://deepwind.ai/pricing).
 
-This repo is the source of the bundle distributed at
-[deepwind.ai/install](https://deepwind.ai/install). The curl-bash entry
-point fetches directly from `main` of this repo via a Vercel rewrite, so
-every commit here is live within 60 seconds of push.
+This repository is the canonical source for the DeepWind harness. Public
+installs must resolve to an exact signed GitHub Release; `main` is never an
+installer payload reference. The first TLS download made by `curl | bash` is
+still a trust boundary, so inspect it when that boundary is unacceptable.
 
 ## Two ways to install
 
 ### One-line (recommended)
 
 ```bash
-curl -fsSL https://deepwind.ai/install/deepwind-init.sh | bash
+curl -fsSL https://deepwind.ai/install | bash
 ```
 
 Inspect before piping:
 
 ```bash
-curl -fsSL https://deepwind.ai/install/deepwind-init.sh | less
-curl -fsSL https://deepwind.ai/install/deepwind-init.sh | bash -s -- --check
+curl -fsSL https://deepwind.ai/install | less
+curl -fsSL https://deepwind.ai/install | bash -s -- --check
 ```
 
 ### From this repo (for forks, air-gapped, or contribution)
@@ -109,6 +109,34 @@ CLAUDE.md.starter                Starter DeepWind-aware CLAUDE.md fragment.
 VERSION                          Source of truth for the version-check hook.
 ```
 
+## Product and security decisions
+
+Each release is an exact strict-semver tag and contains target-specific,
+allowlisted archives, `SHA256SUMS`, a deterministic
+`deepwind-release-manifest.json`, its detached signature, provenance, and the
+versioned public keyring. The manifest records every archive filename,
+SHA-256 digest, byte length, normalized member path, release revision, channel,
+and endpoint alias. Archive members with duplicate, absolute, or traversal
+paths are rejected before the manifest is written.
+
+The release workflow refuses to alter an existing release or use a key that is
+missing, inactive, malformed, or explicitly revoked in
+[`release/keys/public-keyring.json`](release/keys/public-keyring.json). A key
+rotation is additive: commit the successor public fingerprint as `active`, ship
+a release trusted by both keys, then revoke the predecessor only when supported
+bootstraps no longer need it. Revocation is permanent. No release is permitted
+until the repository owners provision the real release public key and matching
+GitHub Actions signing secrets; the empty keyring in a fresh checkout is a
+deliberate fail-closed configuration, not a development key.
+
+The initial manifest channel is visibly `staging`, with endpoint alias
+`deepwind-staging` and URL `https://dev.deepwind.ai/mcp`. This metadata does
+not initiate OAuth, inspect credentials, or imply a production endpoint.
+
+The release contract is being introduced ahead of the target-aware installer.
+Until that verifier ships, do not treat legacy `deepwind-init.sh` behavior as a
+signed-install claim.
+
 ## After install — 5 steps
 
 1. **Restart Claude Code** — newly installed agents, skills, and the version-check hook load on the next session.
@@ -159,7 +187,7 @@ After install, the version-check hook fires at every Claude Code session start. 
 
 ```
 [deepwind] new version available: 1.0.0 → 1.1.0
-           update:  curl -fsSL https://deepwind.ai/install/deepwind-init.sh | bash
+           update:  curl -fsSL https://deepwind.ai/install | bash
            changes: https://github.com/DeepWindAI/harness/releases/tag/v1.1.0
            silence: DEEPWIND_VERSION_CHECK=0
 ```
@@ -191,7 +219,7 @@ The 10 wshobson specialist agents retain their original MIT license (`agents/LIC
 The curl-bash installer is idempotent — re-running upgrades in place:
 
 ```bash
-curl -fsSL https://deepwind.ai/install/deepwind-init.sh | bash
+curl -fsSL https://deepwind.ai/install | bash
 ```
 
 …or `git pull` this repo + re-run `./install.sh`.

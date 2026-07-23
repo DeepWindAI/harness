@@ -1,0 +1,9 @@
+{
+  "formatVersion": 1,
+  "keys": [],
+  "revokedKeyIds": [],
+  "rotation": {
+    "policy": "Add a successor key before its first release; keep an unrevoked predecessor until all supported bootstrap versions trust the successor. Revocation is explicit and permanent.",
+    "minimumTrustedKeys": 1
+  }
+}
