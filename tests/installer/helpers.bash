@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
 TEST_ROOT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+FIXTURE_CODEX_ROLES='frontend-developer
+harness-coordinator
+harness-planner
+security-auditor'
 
 test_sha256() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -42,8 +46,12 @@ make_fixture_release() {
     > "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin/plugin.json"
   printf '{"name":"deepwind","plugins":[]}\n' \
     > "$FIXTURE_RELEASE/codex/.agents/plugins/marketplace.json"
-  printf 'name = "harness-coordinator"\n' \
-    > "$FIXTURE_RELEASE/codex/codex/agents/harness-coordinator.toml"
+  while IFS= read -r role; do
+    printf 'name = "%s"\ndescription = "Fixture role for installer behavior tests."\ndeveloper_instructions = "Fixture instructions long enough for installer behavior tests; this content changes only when an upgrade test requests it."\nsandbox_mode = "read-only"\n[mcp_servers]\n' \
+      "$role" > "$FIXTURE_RELEASE/codex/codex/agents/$role.toml"
+  done <<EOF
+$FIXTURE_CODEX_ROLES
+EOF
 
   tar -C "$FIXTURE_RELEASE/claude" -czf \
     "$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz" agents skills
@@ -94,6 +102,25 @@ make_fixture_release() {
       ]
     }' > "$FIXTURE_RELEASE/deepwind-release-manifest.json"
   printf 'TEST-SIGNATURE\n' > "$FIXTURE_RELEASE/deepwind-release-manifest.json.asc"
+}
+
+refresh_codex_fixture_archive() {
+  codex_archive="$FIXTURE_RELEASE/deepwind-harness-codex-v1.2.3.tar.gz"
+  tar -C "$FIXTURE_RELEASE/codex" -czf "$codex_archive" .agents plugins codex
+  codex_sha=$(test_sha256 "$codex_archive")
+  codex_bytes=$(wc -c < "$codex_archive" | tr -d '[:space:]')
+  codex_files=$(tar -tzf "$codex_archive" \
+    | sed -e 's#^\./##' | jq -Rsc 'split("\n") | map(select(length > 0))')
+  jq \
+    --arg codex_sha "$codex_sha" \
+    --argjson codex_bytes "$codex_bytes" \
+    --argjson codex_files "$codex_files" \
+    '(.archives[] | select(.target == "codex")) |=
+      (.sha256 = $codex_sha | .bytes = $codex_bytes | .files = $codex_files)' \
+    "$FIXTURE_RELEASE/deepwind-release-manifest.json" \
+    > "$FIXTURE_RELEASE/deepwind-release-manifest.json.next"
+  mv "$FIXTURE_RELEASE/deepwind-release-manifest.json.next" \
+    "$FIXTURE_RELEASE/deepwind-release-manifest.json"
 }
 
 run_fixture_installer() {

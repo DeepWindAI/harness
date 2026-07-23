@@ -31,4 +31,17 @@ do
   fi
 done
 
+if [ -d "$ROOT/codex/agents" ]; then
+  if LC_ALL=C rg -n \
+    --glob '*.toml' \
+    '^[[:space:]]*\[mcp_servers\.[^]]+\]|^[[:space:]]*mcp_servers[[:space:]]*=[[:space:]]*\{[^}]+[}]' \
+    "$ROOT/codex/agents"; then
+    printf 'forbidden child connector configuration found in Codex roles\n' >&2
+    exit 1
+  fi
+  if [ -f "$ROOT/tests/validate_codex_toml.py" ]; then
+    python3 "$ROOT/tests/validate_codex_toml.py" "$ROOT/codex/agents" >/dev/null
+  fi
+fi
+
 printf 'PASS: child skills and roles contain no direct MCP capability\n'

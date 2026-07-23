@@ -6,6 +6,7 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 PLUGIN="$ROOT/plugins/deepwind-harness"
 MARKETPLACE="$ROOT/.agents/plugins/marketplace.json"
 POLICY_TEST="$ROOT/tests/plugin/assert-child-mcp-policy.sh"
+ROLE_VALIDATOR="$ROOT/tests/validate_codex_toml.py"
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -63,6 +64,7 @@ if rg -n 'Skill\(|Task\(|~/.claude|CLAUDECODE|Claude Code agent' "$PLUGIN/skills
 fi
 
 bash "$POLICY_TEST" "$ROOT" >/dev/null
+python3 "$ROLE_VALIDATOR" "$ROOT/codex/agents" >/dev/null
 
 fixture=$(mktemp -d "${TMPDIR:-/tmp}/deepwind-plugin-policy.XXXXXX")
 trap 'find "$fixture" -depth -type f -exec rm -f {} \; 2>/dev/null || true; find "$fixture" -depth -type d -exec rmdir {} \; 2>/dev/null || true' EXIT
@@ -80,6 +82,19 @@ do
     fail "policy scanner accepted forbidden content: $forbidden"
   fi
 done
+
+mkdir -p "$fixture/codex/agents"
+printf '%s\n' \
+  'name = "unsafe-child"' \
+  'description = "Unsafe connector-configured child fixture."' \
+  'developer_instructions = "This fixture exists only to prove that child-specific connector configuration is rejected by static policy."' \
+  'sandbox_mode = "read-only"' \
+  '[mcp_servers.remote]' \
+  'command = "printf"' \
+  > "$fixture/codex/agents/unsafe-child.toml"
+if bash "$POLICY_TEST" "$fixture" >/dev/null 2>&1; then
+  fail 'policy scanner accepted child-specific connector configuration'
+fi
 
 rg -q 'codex plugin marketplace add' "$PLUGIN/README.md" \
   || fail 'fresh-install lifecycle command is absent'
