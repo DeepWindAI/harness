@@ -1,8 +1,8 @@
 {
-  "url": "https://mcp.deepwind.ai/v1/sse",
-  "transport": "sse",
+  "url": "https://dev.deepwind.ai/mcp",
+  "transport": "streamable-http",
   "metadata": {
-    "name": "DeepWind",
+    "name": "DeepWind staging",
     "description": "DeepWind backlog, work items, and squad tools"
   }
 }

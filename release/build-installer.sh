@@ -21,7 +21,7 @@ fi
   printf '%s\n' "IFS=\$'\\n\\t'"
   printf '%s\n' 'umask 077'
   printf "EMBEDDED_TRUSTED_KEYRING_B64='%s'\n" "$EMBEDDED_KEYRING"
-  for unit in state args manifest install-target transaction; do
+  for unit in state args manifest install-target transaction codex-mcp doctor; do
     printf '\n# ---- lib/%s.sh ----\n' "$unit"
     sed '/^#!/d' "$ROOT/lib/$unit.sh"
   done
@@ -88,6 +88,18 @@ main() {
     install)
       apply_transaction
       info "DeepWind $VERSION installed for target: $TARGET"
+      if [ "$CONFIGURE_MCP" -eq 1 ]; then
+        if target_selected codex; then
+          if ! maybe_configure_codex_mcp "$CHANNEL"; then
+            warn "DeepWind MCP onboarding did not complete; installed harness files remain available."
+          fi
+          doctor "$TARGET"
+        else
+          warn "DeepWind MCP configuration skipped: the Codex target was not selected."
+        fi
+      else
+        info "DeepWind MCP configuration skipped (use --configure-mcp for interactive staging OAuth)."
+      fi
       ;;
   esac
 }

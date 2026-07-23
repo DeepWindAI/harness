@@ -256,14 +256,31 @@ jobs:
             build_target codex .agents/plugins/marketplace.json plugins/deepwind-harness codex/agents LICENSE VERSION
           fi
 
+          CHANNEL_CONFIG=config/channels/staging.json
+          jq -e '
+            .formatVersion == 1 and
+            .channel == "staging" and
+            .displayName == "DeepWind staging" and
+            .endpoint.alias == "deepwind-staging" and
+            .endpoint.url == "https://dev.deepwind.ai/mcp" and
+            .endpoint.transport == "streamable-http" and
+            .endpoint.oauth == "interactive"
+          ' "$CHANNEL_CONFIG" >/dev/null || {
+            echo "staging MCP channel violates the reviewed allowlist" >&2
+            exit 2
+          }
+          MCP_CHANNEL=$(jq -r '.channel' "$CHANNEL_CONFIG")
+          MCP_ALIAS=$(jq -r '.endpoint.alias' "$CHANNEL_CONFIG")
+          MCP_URL=$(jq -r '.endpoint.url' "$CHANNEL_CONFIG")
+
           printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
           ACTUAL_FINGERPRINT=$(gpg --batch --with-colons --list-keys "$RELEASE_GPG_KEY_ID" | awk -F: '$1 == "fpr" { print $10; exit }')
           EXPECTED_FINGERPRINT=$(jq -r --arg key "$RELEASE_GPG_KEY_ID" '.keys[] | select(.id == $key) | .fingerprint' release/keys/public-keyring.json)
           test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT" || { echo "release private key fingerprint does not match committed public keyring" >&2; exit 2; }
 
           ./release/build-manifest.sh \
-            --version "$VERSION_FROM_TAG" --channel staging \
-            --endpoint-alias deepwind-staging --endpoint-url https://dev.deepwind.ai/mcp \
+            --version "$VERSION_FROM_TAG" --channel "$MCP_CHANNEL" \
+            --endpoint-alias "$MCP_ALIAS" --endpoint-url "$MCP_URL" \
             --key-id "$RELEASE_GPG_KEY_ID" --not-before "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --not-after "$(date -u -d '+180 days' +%Y-%m-%dT%H:%M:%SZ)" \
             --source-revision "$(git rev-parse HEAD)" --output "$ASSETS/deepwind-release-manifest.json" \

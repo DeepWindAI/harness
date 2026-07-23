@@ -118,6 +118,7 @@ usage: deepwind-init.sh [options]
   --check                     verify and report drift without writing
   --force                     replace locally modified managed files
   --skip-hooks                do not install Claude session hooks
+  --configure-mcp             interactively configure Codex MCP after install
   -h, --help
 EOF
 }
@@ -129,6 +130,7 @@ parse_args() {
   MODE=install
   FORCE=0
   SKIP_HOOKS=0
+  CONFIGURE_MCP=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -165,11 +167,15 @@ parse_args() {
         SKIP_HOOKS=1
         shift
         ;;
+      --configure-mcp)
+        CONFIGURE_MCP=1
+        shift
+        ;;
       -h|--help)
         usage
         exit 0
         ;;
-      --ref|--configure-mcp|--uninstall)
+      --ref|--uninstall)
         die "unsupported option in the safe installer: $1"
         ;;
       *)
@@ -180,6 +186,9 @@ parse_args() {
 
   case "$TARGET" in claude|codex|both) ;; *) die "target must be claude, codex, or both" ;; esac
   case "$CHANNEL" in staging|production) ;; *) die "channel must be staging or production" ;; esac
+  if [ "$CONFIGURE_MCP" -eq 1 ] && [ "$MODE" != install ]; then
+    die "--configure-mcp cannot be combined with --dry-run or --check"
+  fi
   if [ -n "$VERSION" ]; then
     printf '%s' "$VERSION" | grep -Eq \
       '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$' \
@@ -691,6 +700,163 @@ apply_transaction() {
   release_lock
 }
 
+# ---- lib/codex-mcp.sh ----
+# shellcheck shell=bash
+# Explicit, user-mediated Codex MCP onboarding. This unit never reads or writes
+# OAuth token storage and never accepts an endpoint from an unsigned source.
+
+DEEPWIND_STAGING_CHANNEL=staging
+DEEPWIND_STAGING_ALIAS=deepwind-staging
+DEEPWIND_STAGING_URL=https://dev.deepwind.ai/mcp
+
+_mcp_info() {
+  printf '%s\n' "$*"
+}
+
+_mcp_warn() {
+  printf 'warning: %s\n' "$*" >&2
+}
+
+interactive_tty() {
+  [ -c /dev/tty ] || return 1
+  (: 2>/dev/null </dev/tty >/dev/tty)
+}
+
+verified_staging_endpoint() {
+  endpoint_channel=$1
+  [ "$endpoint_channel" = "$DEEPWIND_STAGING_CHANNEL" ] || return 1
+  [ -n "${MANIFEST_FILE:-}" ] && [ -f "$MANIFEST_FILE" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+
+  endpoint_fields=$(jq -er '
+    [.channel, .endpoint.alias, .endpoint.url]
+    | select(all(.[]; type == "string"))
+    | @tsv
+  ' "$MANIFEST_FILE" 2>/dev/null) || return 1
+  IFS='	' read -r endpoint_manifest_channel endpoint_alias endpoint_url \
+    <<< "$endpoint_fields"
+
+  [ "$endpoint_manifest_channel" = "$DEEPWIND_STAGING_CHANNEL" ] \
+    && [ "$endpoint_alias" = "$DEEPWIND_STAGING_ALIAS" ] \
+    && [ "$endpoint_url" = "$DEEPWIND_STAGING_URL" ]
+}
+
+configure_codex_mcp() {
+  configure_channel=$1
+  configure_consent=$2
+
+  if ! interactive_tty; then
+    _mcp_warn 'DeepWind MCP configuration skipped: an interactive terminal is required.'
+    return 3
+  fi
+  if [ "$configure_consent" != yes ]; then
+    _mcp_warn 'DeepWind MCP configuration skipped: explicit confirmation was not provided.'
+    return 3
+  fi
+  if ! command -v codex >/dev/null 2>&1; then
+    _mcp_warn 'DeepWind MCP configuration skipped: Codex CLI is unavailable.'
+    return 4
+  fi
+  if ! verified_staging_endpoint "$configure_channel"; then
+    _mcp_warn 'DeepWind MCP configuration refused: the signed staging endpoint is not allowlisted.'
+    return 5
+  fi
+
+  _mcp_info 'Configuring DeepWind staging for the interactive Codex coordinator.'
+  if ! codex mcp add "$DEEPWIND_STAGING_ALIAS" \
+    --url "$DEEPWIND_STAGING_URL" >/dev/null 2>&1; then
+    _mcp_warn 'Codex could not register the DeepWind staging connector; installed files are unchanged.'
+    return 6
+  fi
+  if ! codex mcp login "$DEEPWIND_STAGING_ALIAS" >/dev/null 2>&1; then
+    _mcp_warn 'DeepWind staging OAuth did not complete; rerun with --configure-mcp when ready.'
+    return 7
+  fi
+  _mcp_info 'DeepWind staging MCP is registered for this interactive Codex user.'
+}
+
+maybe_configure_codex_mcp() {
+  onboarding_channel=$1
+  if ! interactive_tty; then
+    configure_codex_mcp "$onboarding_channel" no
+    return $?
+  fi
+
+  printf '%s\n' \
+    'DeepWind MCP channel: staging' \
+    'Endpoint: https://dev.deepwind.ai/mcp' \
+    'OAuth is stored and managed by Codex for this interactive user only.' \
+    > /dev/tty
+  printf 'Type yes to register and authenticate DeepWind staging: ' > /dev/tty
+  onboarding_consent=
+  IFS= read -r onboarding_consent < /dev/tty || onboarding_consent=
+  configure_codex_mcp "$onboarding_channel" "$onboarding_consent"
+}
+
+# ---- lib/doctor.sh ----
+# shellcheck shell=bash disable=SC2154
+# Privacy-safe, non-mutating MCP diagnostics. Raw Codex output is consumed by a
+# fixed classifier and is never emitted, retained, or written to a log.
+
+classify_codex_mcp_stream() {
+  awk '
+    BEGIN { exit_status = 0 }
+    /^__DEEPWIND_CODEX_EXIT=[0-9]+$/ {
+      sub(/^__DEEPWIND_CODEX_EXIT=/, "")
+      exit_status = $0 + 0
+      next
+    }
+    {
+      line = tolower($0)
+      if (line ~ /no[^[:alnum:]]+(deepwind[^[:alnum:]]+)?workspace|workspace[^[:alnum:]]+(is[[:space:]]+)?not[[:space:]-]*configured/) no_workspace = 1
+      if (line ~ /oauth|unauthori[sz]ed|authentication|login[[:space:]-]+required|not[[:space:]-]+logged/) oauth = 1
+      if (line ~ /session[[:space:]-]+not[[:space:]-]+found|connection|connect[[:space:]-]+failed|unavailable|timed?[[:space:]-]*out|network[[:space:]-]+error/) connection = 1
+      if (line ~ /server[[:space:]-]+not[[:space:]-]+found|unknown[[:space:]-]+server|mcp[^[:alnum:]]+not[[:space:]-]+configured/) not_configured = 1
+      if (line ~ /enabled|streamable[_ -]?http|https:\/\/dev[.]deepwind[.]ai\/mcp/) configured = 1
+    }
+    END {
+      if (no_workspace) print "no-workspace"
+      else if (oauth) print "oauth-required"
+      else if (connection) print "connection-unavailable"
+      else if (not_configured) print "not-configured"
+      else if (configured) print "configured"
+      else if (exit_status != 0) print "command-error"
+      else print "configured"
+    }
+  '
+}
+
+codex_mcp_status() {
+  if ! command -v codex >/dev/null 2>&1; then
+    printf '%s\n' cli-unavailable
+    return 0
+  fi
+
+  {
+    codex_status=0
+    codex mcp get "$DEEPWIND_STAGING_ALIAS" 2>&1 || codex_status=$?
+    printf '__DEEPWIND_CODEX_EXIT=%s\n' "$codex_status"
+  } | classify_codex_mcp_stream
+}
+
+doctor() {
+  doctor_target=$1
+  case "$doctor_target" in
+    claude)
+      printf '%s\n' '{"target":"claude","component":"mcp","status":"not-applicable"}'
+      ;;
+    codex|both)
+      doctor_status=$(codex_mcp_status)
+      printf '{"target":"codex","component":"mcp","channel":"staging","status":"%s"}\n' \
+        "$doctor_status"
+      ;;
+    *)
+      printf '%s\n' '{"target":"unknown","component":"mcp","status":"not-applicable"}'
+      ;;
+  esac
+  return 0
+}
+
 cleanup() {
   status=$?
   trap - EXIT HUP INT TERM
@@ -752,6 +918,18 @@ main() {
     install)
       apply_transaction
       info "DeepWind $VERSION installed for target: $TARGET"
+      if [ "$CONFIGURE_MCP" -eq 1 ]; then
+        if target_selected codex; then
+          if ! maybe_configure_codex_mcp "$CHANNEL"; then
+            warn "DeepWind MCP onboarding did not complete; installed harness files remain available."
+          fi
+          doctor "$TARGET"
+        else
+          warn "DeepWind MCP configuration skipped: the Codex target was not selected."
+        fi
+      else
+        info "DeepWind MCP configuration skipped (use --configure-mcp for interactive staging OAuth)."
+      fi
       ;;
   esac
 }

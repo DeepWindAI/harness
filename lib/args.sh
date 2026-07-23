@@ -11,6 +11,7 @@ usage: deepwind-init.sh [options]
   --check                     verify and report drift without writing
   --force                     replace locally modified managed files
   --skip-hooks                do not install Claude session hooks
+  --configure-mcp             interactively configure Codex MCP after install
   -h, --help
 EOF
 }
@@ -22,6 +23,7 @@ parse_args() {
   MODE=install
   FORCE=0
   SKIP_HOOKS=0
+  CONFIGURE_MCP=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -58,11 +60,15 @@ parse_args() {
         SKIP_HOOKS=1
         shift
         ;;
+      --configure-mcp)
+        CONFIGURE_MCP=1
+        shift
+        ;;
       -h|--help)
         usage
         exit 0
         ;;
-      --ref|--configure-mcp|--uninstall)
+      --ref|--uninstall)
         die "unsupported option in the safe installer: $1"
         ;;
       *)
@@ -73,6 +79,9 @@ parse_args() {
 
   case "$TARGET" in claude|codex|both) ;; *) die "target must be claude, codex, or both" ;; esac
   case "$CHANNEL" in staging|production) ;; *) die "channel must be staging or production" ;; esac
+  if [ "$CONFIGURE_MCP" -eq 1 ] && [ "$MODE" != install ]; then
+    die "--configure-mcp cannot be combined with --dry-run or --check"
+  fi
   if [ -n "$VERSION" ]; then
     printf '%s' "$VERSION" | grep -Eq \
       '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$' \

@@ -92,10 +92,9 @@ frameworks/                      → ~/deepwind-frameworks/
   HARNESS_TASK_DEFINITION_TEMPLATE.json   Per-task JSON skeleton
 
 payload/                         → fetched by the installer
-  mcp/deepwind.mcp.json           Hosted SSE entry merged into
-                                  ~/.claude.json under mcpServers.deepwind
-                                  (OAuth on first /mcp use — no token in
-                                  config, no secret in the installer)
+  mcp/deepwind.mcp.json           Staging streamable-HTTP reference metadata.
+                                  It is installed as a file only and is never
+                                  merged into user configuration implicitly.
   hooks/session-start-deepwind-version-check.sh
                                   Optional version-check banner — once per
                                   day, fails open on network error, prompts
@@ -132,10 +131,14 @@ deliberate fail-closed configuration, not a development key.
 The initial manifest channel is visibly `staging`, with endpoint alias
 `deepwind-staging` and URL `https://dev.deepwind.ai/mcp`. This metadata does
 not initiate OAuth, inspect credentials, or imply a production endpoint.
+Codex configuration is a separate, interactive action:
+`curl -fsSL https://deepwind.ai/install | bash -s -- --configure-mcp`. It
+requires a controlling TTY and the exact confirmation `yes`; default
+installation only writes verified harness files.
+See [`docs/mcp-security.md`](docs/mcp-security.md).
 
-The release contract is being introduced ahead of the target-aware installer.
-Until that verifier ships, do not treat legacy `deepwind-init.sh` behavior as a
-signed-install claim.
+The generated `deepwind-init.sh` enforces this signed release contract before
+planning or mutating any target file.
 
 ## After install — 5 steps
 
@@ -150,9 +153,11 @@ signed-install claim.
 
    Without `superpowers`, `harness-prep` skips brainstorming and warns — usable but degraded.
 
-3. **Connect the DeepWind MCP server** so the agents can pull strategic context and push status updates:
+3. **Connect the DeepWind MCP server** so the interactive coordinator can pull strategic context and push approved status updates:
    - In Claude Code: type `/mcp`
    - Pick **"DeepWind"** → complete the OAuth flow
+   - For Codex: run `curl -fsSL https://deepwind.ai/install | bash -s -- --target codex --configure-mcp` in an interactive terminal
+   - Specialists do not receive MCP credentials; they return proposed reads and writes to the coordinator
    - You'll see `deepwind_*` tools appear (currently surfaced as `pm33_*` during the rebrand transition)
    - Before your first call each session, invoke `Skill({ skill: "deepwind-mcp" })` to load the conventions
 
