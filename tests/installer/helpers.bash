@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+
+TEST_ROOT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
+
+test_sha256() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | awk '{print $1}'
+  else
+    shasum -a 256 "$1" | awk '{print $1}'
+  fi
+}
+
+make_fixture_release() {
+  FIXTURE_ROOT=$(realpath "$(mktemp -d "${TMPDIR:-/tmp}/deepwind-installer-test.XXXXXX")")
+  FIXTURE_HOME="$FIXTURE_ROOT/home"
+  FIXTURE_RELEASE="$FIXTURE_ROOT/release"
+  FIXTURE_INSTALLER="$FIXTURE_ROOT/deepwind-init.sh"
+  mkdir -p \
+    "$FIXTURE_HOME" \
+    "$FIXTURE_ROOT/bin" \
+    "$FIXTURE_RELEASE/claude/agents" \
+    "$FIXTURE_RELEASE/claude/skills/harness-prep" \
+    "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin" \
+    "$FIXTURE_RELEASE/codex/codex/agents"
+  printf 'fixture trusted keyring\n' > "$FIXTURE_ROOT/test-keyring.gpg"
+  bash "$TEST_ROOT/release/build-installer.sh" \
+    "$FIXTURE_INSTALLER" "$FIXTURE_ROOT/test-keyring.gpg"
+  # shellcheck disable=SC2016
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -euo pipefail' \
+    '[ "$1" = "--keyring" ]' \
+    '[ -s "$2" ]' \
+    '[ "$(cat "$3")" = "TEST-SIGNATURE" ]' \
+    '[ -s "$4" ]' > "$FIXTURE_ROOT/bin/gpgv"
+  chmod 755 "$FIXTURE_ROOT/bin/gpgv"
+
+  printf 'claude-agent-v1\n' > "$FIXTURE_RELEASE/claude/agents/harness-coordinator.md"
+  printf 'claude-skill-v1\n' > "$FIXTURE_RELEASE/claude/skills/harness-prep/SKILL.md"
+  printf '{"name":"deepwind-harness"}\n' \
+    > "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin/plugin.json"
+  printf 'name = "harness-coordinator"\n' \
+    > "$FIXTURE_RELEASE/codex/codex/agents/harness-coordinator.toml"
+
+  tar -C "$FIXTURE_RELEASE/claude" -czf \
+    "$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz" agents skills
+  tar -C "$FIXTURE_RELEASE/codex" -czf \
+    "$FIXTURE_RELEASE/deepwind-harness-codex-v1.2.3.tar.gz" plugins codex
+
+  claude_sha=$(test_sha256 "$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz")
+  codex_sha=$(test_sha256 "$FIXTURE_RELEASE/deepwind-harness-codex-v1.2.3.tar.gz")
+  claude_bytes=$(wc -c < "$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz" | tr -d '[:space:]')
+  codex_bytes=$(wc -c < "$FIXTURE_RELEASE/deepwind-harness-codex-v1.2.3.tar.gz" | tr -d '[:space:]')
+  claude_files=$(tar -tzf "$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz" \
+    | sed -e 's#^\./##' | jq -Rsc 'split("\n") | map(select(length > 0))')
+  codex_files=$(tar -tzf "$FIXTURE_RELEASE/deepwind-harness-codex-v1.2.3.tar.gz" \
+    | sed -e 's#^\./##' | jq -Rsc 'split("\n") | map(select(length > 0))')
+
+  jq -nS \
+    --arg claude_sha "$claude_sha" --arg codex_sha "$codex_sha" \
+    --argjson claude_bytes "$claude_bytes" --argjson codex_bytes "$codex_bytes" \
+    --argjson claude_files "$claude_files" --argjson codex_files "$codex_files" \
+    '{
+      formatVersion: 1,
+      version: "1.2.3",
+      tag: "v1.2.3",
+      channel: "staging",
+      endpoint: {alias: "deepwind-staging", url: "https://dev.deepwind.ai/mcp"},
+      signing: {
+        keyId: "fixture-key",
+        notBefore: "2026-01-01T00:00:00Z",
+        notAfter: "2027-01-01T00:00:00Z",
+        signatureFile: "deepwind-release-manifest.json.asc"
+      },
+      provenance: {repository: "DeepWindAI/harness", revision: "deadbeef"},
+      archives: [
+        {
+          target: "claude",
+          file: "deepwind-harness-claude-v1.2.3.tar.gz",
+          sha256: $claude_sha,
+          bytes: $claude_bytes,
+          files: $claude_files
+        },
+        {
+          target: "codex",
+          file: "deepwind-harness-codex-v1.2.3.tar.gz",
+          sha256: $codex_sha,
+          bytes: $codex_bytes,
+          files: $codex_files
+        }
+      ]
+    }' > "$FIXTURE_RELEASE/deepwind-release-manifest.json"
+  printf 'TEST-SIGNATURE\n' > "$FIXTURE_RELEASE/deepwind-release-manifest.json.asc"
+}
+
+run_fixture_installer() {
+  env \
+    HOME="$FIXTURE_HOME" \
+    PATH="$FIXTURE_ROOT/bin:$PATH" \
+    DEEPWIND_INSTALL_TESTING=1 \
+    DEEPWIND_RELEASE_DIR="$FIXTURE_RELEASE" \
+    bash "$FIXTURE_INSTALLER" --version 1.2.3 "$@"
+}
+
+remove_fixture_release() {
+  [ -n "${FIXTURE_ROOT:-}" ] && rm -rf "$FIXTURE_ROOT"
+}
