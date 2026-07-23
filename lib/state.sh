@@ -26,6 +26,7 @@ configure_paths() {
   CODEX_DIR="$HOME/.codex"
   FRAMEWORKS_DIR="$HOME/deepwind-frameworks"
   INSTALL_DIR="$HOME/.deepwind/install"
+  CODEX_MARKETPLACE_DIR="$INSTALL_DIR/share/codex-marketplace"
   BIN_DIR="$HOME/.deepwind/bin"
   LOCK_DIR="$HOME/.deepwind-install.lock"
   STATE_FILE="$INSTALL_DIR/state.tsv"

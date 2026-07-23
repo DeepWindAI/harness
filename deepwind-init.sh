@@ -34,6 +34,7 @@ configure_paths() {
   CODEX_DIR="$HOME/.codex"
   FRAMEWORKS_DIR="$HOME/deepwind-frameworks"
   INSTALL_DIR="$HOME/.deepwind/install"
+  CODEX_MARKETPLACE_DIR="$INSTALL_DIR/share/codex-marketplace"
   BIN_DIR="$HOME/.deepwind/bin"
   LOCK_DIR="$HOME/.deepwind-install.lock"
   STATE_FILE="$INSTALL_DIR/state.tsv"
@@ -387,7 +388,10 @@ map_destination() {
       printf '%s/share/claude/%s\n' "$INSTALL_DIR" "$member"
       ;;
     codex:plugins/deepwind-harness/*)
-      printf '%s/plugins/deepwind-harness/%s\n' "$CODEX_DIR" "${member#plugins/deepwind-harness/}"
+      printf '%s/plugins/deepwind-harness/%s\n' "$CODEX_MARKETPLACE_DIR" "${member#plugins/deepwind-harness/}"
+      ;;
+    codex:.agents/plugins/marketplace.json)
+      printf '%s/.agents/plugins/marketplace.json\n' "$CODEX_MARKETPLACE_DIR"
       ;;
     codex:codex/agents/*)
       printf '%s/agents/%s\n' "$CODEX_DIR" "${member#codex/agents/}"

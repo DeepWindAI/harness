@@ -232,6 +232,13 @@ jobs:
           export SOURCE_DATE_EPOCH
           SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
 
+          if [ -f plugins/deepwind-harness/.codex-plugin/plugin.json ]; then
+            PLUGIN_MANIFEST=plugins/deepwind-harness/.codex-plugin/plugin.json
+            jq --arg version "$VERSION_FROM_TAG" '.version = $version' \
+              "$PLUGIN_MANIFEST" > "${PLUGIN_MANIFEST}.next"
+            mv "${PLUGIN_MANIFEST}.next" "$PLUGIN_MANIFEST"
+          fi
+
           build_target() {
             target="$1"; shift
             output="$ASSETS/deepwind-harness-${target}-v${VERSION_FROM_TAG}.tar.gz"
@@ -246,7 +253,7 @@ jobs:
           # The Codex archive becomes part of this same signed contract only
           # after the Codex plugin and role pack exist (DW-003/DW-004).
           if [ -d plugins/deepwind-harness ] && [ -d codex/agents ]; then
-            build_target codex plugins/deepwind-harness codex/agents LICENSE VERSION
+            build_target codex .agents/plugins/marketplace.json plugins/deepwind-harness codex/agents LICENSE VERSION
           fi
 
           printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import

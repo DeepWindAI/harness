@@ -28,7 +28,10 @@ map_destination() {
       printf '%s/share/claude/%s\n' "$INSTALL_DIR" "$member"
       ;;
     codex:plugins/deepwind-harness/*)
-      printf '%s/plugins/deepwind-harness/%s\n' "$CODEX_DIR" "${member#plugins/deepwind-harness/}"
+      printf '%s/plugins/deepwind-harness/%s\n' "$CODEX_MARKETPLACE_DIR" "${member#plugins/deepwind-harness/}"
+      ;;
+    codex:.agents/plugins/marketplace.json)
+      printf '%s/.agents/plugins/marketplace.json\n' "$CODEX_MARKETPLACE_DIR"
       ;;
     codex:codex/agents/*)
       printf '%s/agents/%s\n' "$CODEX_DIR" "${member#codex/agents/}"

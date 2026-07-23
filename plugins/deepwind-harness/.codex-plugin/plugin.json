@@ -1,0 +1,36 @@
+{
+  "name": "deepwind-harness",
+  "version": "1.1.6",
+  "description": "Plan and coordinate large engineering efforts with discovery, adversarial review, isolated execution, and evidence-based delivery.",
+  "author": {
+    "name": "DeepWind",
+    "url": "https://deepwind.ai/"
+  },
+  "homepage": "https://deepwind.ai/curriculum/harness-setup",
+  "repository": "https://github.com/DeepWindAI/harness",
+  "license": "MIT",
+  "keywords": [
+    "engineering",
+    "planning",
+    "multi-agent",
+    "tdd"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "DeepWind Harness",
+    "shortDescription": "Plan and execute large engineering efforts safely.",
+    "longDescription": "A Codex-native workflow for discovery, sprint planning, adversarial review, worktree-isolated specialist execution, and evidence-based delivery.",
+    "developerName": "DeepWind",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://deepwind.ai/",
+    "defaultPrompt": [
+      "Prepare a harness plan for this engineering goal.",
+      "Review and execute the current harness project."
+    ],
+    "brandColor": "#0B1220"
+  }
+}

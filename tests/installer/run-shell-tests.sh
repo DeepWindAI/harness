@@ -17,8 +17,10 @@ trap remove_fixture_release EXIT HUP INT TERM
 run_fixture_installer >/dev/null
 [ -f "$FIXTURE_HOME/.claude/agents/harness-coordinator.md" ] \
   || fail 'default target did not install Claude'
-[ -f "$FIXTURE_HOME/.codex/plugins/deepwind-harness/.codex-plugin/plugin.json" ] \
+[ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/.codex-plugin/plugin.json" ] \
   || fail 'default target did not install Codex'
+[ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/.agents/plugins/marketplace.json" ] \
+  || fail 'default target did not install Codex marketplace catalog'
 
 remove_fixture_release
 make_fixture_release

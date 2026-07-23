@@ -14,7 +14,8 @@ teardown() {
   run run_fixture_installer
   [ "$status" -eq 0 ]
   [ -f "$FIXTURE_HOME/.claude/agents/harness-coordinator.md" ]
-  [ -f "$FIXTURE_HOME/.codex/plugins/deepwind-harness/.codex-plugin/plugin.json" ]
+  [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/.codex-plugin/plugin.json" ]
+  [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/.agents/plugins/marketplace.json" ]
 }
 
 @test "target accepts only claude, codex, or both" {
@@ -59,7 +60,7 @@ teardown() {
     bash "$FIXTURE_INSTALLER" --version 1.2.3
   [ "$status" -ne 0 ]
   [ ! -e "$FIXTURE_HOME/.claude/agents/harness-coordinator.md" ]
-  [ ! -e "$FIXTURE_HOME/.codex/plugins/deepwind-harness/.codex-plugin/plugin.json" ]
+  [ ! -e "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/.codex-plugin/plugin.json" ]
 }
 
 @test "standalone script works through the documented pipe invocation" {
