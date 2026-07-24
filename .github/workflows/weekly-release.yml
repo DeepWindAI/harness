@@ -1,8 +1,8 @@
 # Weekly auto-release
 #
 # Every Monday 14:00 UTC (~7am Pacific), bumps the patch version, tags, builds
-# a `deepwind-harness-vX.Y.Z.tar.gz`, and creates a GitHub Release with the
-# tarball as an asset.
+# target archives plus a versioned bootstrap, and creates a GitHub Release
+# containing the complete signed manifest contract.
 #
 # Also runs on manual dispatch via the Actions UI (Run workflow → main),
 # and on any pushed tag matching `v*` (for human-driven minor/major releases).
@@ -40,7 +40,7 @@ on:
     tags: [ 'v*' ]
 
 permissions:
-  contents: write   # commit VERSION bump, push tag, create Release
+  contents: read
 
 jobs:
   bump-and-release:
@@ -48,12 +48,14 @@ jobs:
     # build-and-release below.
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       new_version: ${{ steps.bump.outputs.new_version }}
       tag: ${{ steps.bump.outputs.tag }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: main
           fetch-depth: 0
@@ -69,7 +71,7 @@ jobs:
           INPUT_BUMP: ${{ github.event.inputs.bump || 'patch' }}
         run: |
           set -euo pipefail
-          OLD=$(cat VERSION | tr -d '[:space:]')
+          OLD=$(tr -d '[:space:]' < VERSION)
 
           # Belt-and-suspenders: workflow_dispatch's choice type already
           # restricts INPUT_BUMP to {patch, minor, major}, but validate anyway.
@@ -86,6 +88,12 @@ jobs:
           esac
           NEW="$MAJ.$MIN.$PAT"
           echo "$NEW" > VERSION
+          PLUGIN_MANIFEST=plugins/deepwind-harness/.codex-plugin/plugin.json
+          if [ -f "$PLUGIN_MANIFEST" ]; then
+            jq --arg version "$NEW" '.version = $version' \
+              "$PLUGIN_MANIFEST" > "${PLUGIN_MANIFEST}.next"
+            mv "${PLUGIN_MANIFEST}.next" "$PLUGIN_MANIFEST"
+          fi
           echo "  bumped: $OLD → $NEW ($INPUT_BUMP)"
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
           echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
@@ -97,12 +105,18 @@ jobs:
         run: |
           set -euo pipefail
           git add VERSION
+          if [ -f plugins/deepwind-harness/.codex-plugin/plugin.json ]; then
+            git add plugins/deepwind-harness/.codex-plugin/plugin.json
+          fi
           git commit -m "release: ${TAG} (weekly auto-bump)" || { echo "no changes — exiting"; exit 0; }
           git tag -a "${TAG}" -m "${TAG} — weekly auto-release"
           git push origin main
           git push origin "${TAG}"
 
-  build-and-release:
+  resolve-release-ref:
+    # Produce one immutable release tag for every trigger. Both the test matrix
+    # and the signing job consume this output, so neither can drift to a newer
+    # main commit between jobs.
     needs: [ bump-and-release ]
     if: |
       always() && (
@@ -110,9 +124,21 @@ jobs:
         (needs.bump-and-release.result == 'success' && needs.bump-and-release.outputs.tag != '')
       )
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.release-ref.outputs.tag }}
+      commit_sha: ${{ steps.release-ref.outputs.commit_sha }}
     steps:
-      - name: Resolve tag
-        id: tag
+      - name: Checkout trusted main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Resolve immutable release tag
+        id: release-ref
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           EVENT_NAME: ${{ github.event_name }}
@@ -124,142 +150,309 @@ jobs:
           else
             TAG="$BUMP_TAG"
           fi
-          # Validate tag format: vMAJOR.MINOR.PATCH with optional -prerelease.
-          # Prevents shell metacharacters / path-traversal in subsequent steps.
           if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+]+)?$'; then
             echo "invalid tag format: '$TAG'" >&2
             exit 2
           fi
+
+          # Fetch only the exact trust root and candidate tag. Peeling ^{commit}
+          # normalizes both annotated and lightweight tags to one immutable
+          # commit that every downstream job must use.
+          TRUSTED_MAIN_REF=refs/remotes/origin/main
+          git fetch --force --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/tags/${TAG}:refs/tags/${TAG}"
+          CANDIDATE_COMMIT=$(git rev-parse --verify "refs/tags/${TAG}^{commit}")
+          TRUSTED_MAIN_COMMIT=$(git rev-parse --verify "${TRUSTED_MAIN_REF}^{commit}")
+          if ! git merge-base --is-ancestor "$CANDIDATE_COMMIT" "$TRUSTED_MAIN_REF"; then
+            echo "tag $TAG peels to $CANDIDATE_COMMIT, which is not reachable from trusted main $TRUSTED_MAIN_COMMIT" >&2
+            exit 2
+          fi
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "  building release for $TAG"
+          echo "commit_sha=$CANDIDATE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "  release ref: $TAG ($CANDIDATE_COMMIT)"
 
-      - name: Checkout tag
-        uses: actions/checkout@v5
+  installer-matrix:
+    needs: [ bump-and-release, resolve-release-ref ]
+    if: |
+      always() &&
+      needs.resolve-release-ref.result == 'success' &&
+      needs.resolve-release-ref.outputs.tag != ''
+    name: installer matrix (${{ matrix.name }})
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-gnu-bash
+            os: ubuntu-22.04
+          - name: macos-bash-3-2
+            os: macos-15
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ steps.tag.outputs.tag }}
-          fetch-depth: 0  # need main history for the optional VERSION-sync below
-          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ needs.resolve-release-ref.outputs.commit_sha }}
+          persist-credentials: false
 
-      - name: Self-correct VERSION to match tag
-        # Reason: when triggered by a manual `git tag v1.x.y && git push --tags`
-        # (bypassing the bump-and-release job), the checked-out tag's tree may
-        # have a stale VERSION. We force-write VERSION to match the tag name
-        # so the tarball's internal VERSION file is always consistent with the
-        # release that ships it. This step is a no-op when bump-and-release
-        # ran first (VERSION is already correct in that case).
-        #
-        # Defect surfaced 2026-06-21 when v1.0.1 release shipped a tarball
-        # containing VERSION=1.0.0, breaking the version-check banner.
+      - name: Verify exact tested commit
+        shell: bash
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          EXPECTED_COMMIT_SHA: ${{ needs.resolve-release-ref.outputs.commit_sha }}
         run: |
           set -euo pipefail
-          VERSION_FROM_TAG="${TAG#v}"
-          CURRENT=$(cat VERSION | tr -d '[:space:]' 2>/dev/null || echo "")
-          if [ "$CURRENT" != "$VERSION_FROM_TAG" ]; then
-            echo "  syncing VERSION: $CURRENT → $VERSION_FROM_TAG (from tag $TAG)"
-            echo "$VERSION_FROM_TAG" > VERSION
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT_SHA"
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
+      - name: Validate workflow syntax
+        # rhysd/actionlint is a container action. Keep it mandatory on the
+        # Linux matrix leg without preventing the macOS portability leg from
+        # running the remaining release checks.
+        if: runner.os == 'Linux'
+        uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7
+
+      - name: Install fixture test tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${RUNNER_OS}" = Linux ]; then
+            sudo apt-get update
+            sudo apt-get install -y bats ripgrep shellcheck
           else
-            echo "  VERSION already matches tag ($VERSION_FROM_TAG)"
+            brew update
+            brew install bats-core ripgrep shellcheck
+          fi
+          npm install --global @openai/codex@0.145.0
+          test "$(codex --version)" = "codex-cli 0.145.0"
+          python3 -c 'import sys, tomllib; assert sys.version_info >= (3, 11)'
+
+      - name: Verify generated standalone installer is current
+        shell: bash
+        run: |
+          set -euo pipefail
+          before=$(shasum -a 256 deepwind-init.sh | awk '{print $1}')
+          bash release/build-installer.sh deepwind-init.sh
+          after=$(shasum -a 256 deepwind-init.sh | awk '{print $1}')
+          test "$before" = "$after"
+
+      - name: Run release installer matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash release/test-manifest.sh
+          bash release/test-workflow-contract.sh
+          bash tests/installer/matrix-contract.sh
+          bats tests/installer
+          bash tests/plugin/test-codex-plugin.sh
+          bash tests/plugin/assert-child-mcp-policy.sh
+          bash tests/plugin/test-codex-plugin-lifecycle.sh
+          bash tests/doctor/run-shell-tests.sh
+          bash tests/docs/test-installation-docs.sh
+          shellcheck deepwind-init.sh lib/*.sh release/*.sh \
+            tests/installer/*.sh tests/installer/*.bash \
+            tests/plugin/*.sh tests/doctor/*.sh tests/docs/*.sh
+
+  build-and-release:
+    needs: [ bump-and-release, resolve-release-ref, installer-matrix ]
+    if: |
+      always() &&
+      needs.resolve-release-ref.result == 'success' &&
+      needs.installer-matrix.result == 'success' &&
+      needs.resolve-release-ref.outputs.tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout tested commit
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ needs.resolve-release-ref.outputs.commit_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Revalidate trusted release commit
+        env:
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
+          EXPECTED_COMMIT_SHA: ${{ needs.resolve-release-ref.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          TRUSTED_MAIN_REF=refs/remotes/origin/main
+          git fetch --force --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/tags/${TAG}:refs/tags/${TAG}"
+          CURRENT_TAG_COMMIT=$(git rev-parse --verify "refs/tags/${TAG}^{commit}")
+          TRUSTED_MAIN_COMMIT=$(git rev-parse --verify "${TRUSTED_MAIN_REF}^{commit}")
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT_SHA" || {
+            echo "checked-out release tree differs from tested commit $EXPECTED_COMMIT_SHA" >&2
+            exit 2
+          }
+          test "$CURRENT_TAG_COMMIT" = "$EXPECTED_COMMIT_SHA" || {
+            echo "tag $TAG moved from tested commit $EXPECTED_COMMIT_SHA to $CURRENT_TAG_COMMIT" >&2
+            exit 2
+          }
+          if ! git merge-base --is-ancestor "$EXPECTED_COMMIT_SHA" "$TRUSTED_MAIN_REF"; then
+            echo "tested commit $EXPECTED_COMMIT_SHA is not reachable from trusted main $TRUSTED_MAIN_COMMIT" >&2
+            exit 2
           fi
 
-      - name: Sync VERSION on main when triggered by tag push
-        # When this workflow fires from `on: push: tags:` (manual tag push),
-        # main's VERSION may still be ahead-of/behind the tag because
-        # bump-and-release didn't run. Update main to match so future cron
-        # runs bump from the right baseline + the website's /install/VERSION
-        # endpoint reflects what's actually published.
-        if: github.event_name == 'push'
+      - name: Verify immutable tag version
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
         run: |
           set -euo pipefail
           VERSION_FROM_TAG="${TAG#v}"
-          git fetch origin main --quiet
-          git checkout origin/main -- VERSION 2>/dev/null || true
-          MAIN_CURRENT=$(cat VERSION | tr -d '[:space:]' 2>/dev/null || echo "")
-          if [ "$MAIN_CURRENT" = "$VERSION_FROM_TAG" ]; then
-            echo "  main's VERSION already matches; no sync needed"
-            # restore the tag's tree before the build step reads it
-            git checkout "${TAG}" -- VERSION 2>/dev/null || echo "$VERSION_FROM_TAG" > VERSION
-            exit 0
-          fi
-          echo "  main's VERSION=$MAIN_CURRENT, tag is $VERSION_FROM_TAG — pushing sync commit"
-          # Write the new VERSION + commit on a temp branch, then push to main
-          git config user.name "deepwind-bot"
-          git config user.email "deepwind-bot@users.noreply.github.com"
-          # Recover to tag tree first (we trashed VERSION via checkout origin/main)
-          echo "$VERSION_FROM_TAG" > VERSION
-          # Push the sync commit onto main directly
-          BRANCH="sync-version-${TAG}"
-          git checkout -b "$BRANCH" "origin/main"
-          echo "$VERSION_FROM_TAG" > VERSION
-          git add VERSION
-          git commit -m "release: sync VERSION to $TAG (tag-push self-correction)" || { echo "  no changes"; exit 0; }
-          git push origin "HEAD:main"
-          # Back to the tag for build step
-          git checkout "${TAG}"
+          CURRENT=$(tr -d '[:space:]' < VERSION)
+          test "$CURRENT" = "$VERSION_FROM_TAG" || {
+            echo "tag $TAG points to VERSION=$CURRENT; refusing to mutate or release a different tree" >&2
+            exit 2
+          }
 
-      - name: Build tarball
+      - name: Build immutable target archives and release manifest
         id: build
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          RELEASE_GPG_KEY_ID: ${{ secrets.DEEPWIND_RELEASE_GPG_KEY_ID }}
+          RELEASE_GPG_PRIVATE_KEY: ${{ secrets.DEEPWIND_RELEASE_GPG_PRIVATE_KEY }}
+          RELEASE_GPG_PASSPHRASE: ${{ secrets.DEEPWIND_RELEASE_GPG_PASSPHRASE }}
         run: |
           set -euo pipefail
-          # Stable filename across releases — lets the marketing site link to
-          # https://github.com/.../releases/latest/download/deepwind-harness.tar.gz
-          # without changing per-version. The bundle's own VERSION file inside
-          # the tarball records which version was built.
-          NAME="deepwind-harness.tar.gz"
-          # Build INTO /tmp (not the source dir) to avoid the
-          # `tar: file changed as we read it` warning that fires when the
-          # output file is being written into the directory tar is reading.
-          # GNU tar exits 1 on that warning. /tmp is a different filesystem
-          # but supports rename via cp+rm, so we copy back at the end.
-          OUT="/tmp/${NAME}"
-          tar --exclude='./.git' --exclude='./.github' --exclude='./.gitignore' \
-              --exclude='*.tar.gz' \
-              -czf "$OUT" .
-          cp "$OUT" "./${NAME}"
-          SHA=$(shasum -a 256 "./${NAME}" | awk '{print $1}')
-          SIZE=$(wc -c < "./${NAME}" | awk '{print $1}')
-          echo "archive=${NAME}" >> "$GITHUB_OUTPUT"
-          echo "sha256=$SHA"      >> "$GITHUB_OUTPUT"
-          echo "size=$SIZE"       >> "$GITHUB_OUTPUT"
-          echo "  built ${NAME} — $SIZE bytes, sha256=$SHA"
+          VERSION_FROM_TAG="${TAG#v}"
+          test "$(tr -d '[:space:]' < VERSION)" = "$VERSION_FROM_TAG"
+          test -n "$RELEASE_GPG_KEY_ID" || { echo "DEEPWIND_RELEASE_GPG_KEY_ID is required" >&2; exit 2; }
+          test -n "$RELEASE_GPG_PRIVATE_KEY" || { echo "DEEPWIND_RELEASE_GPG_PRIVATE_KEY is required" >&2; exit 2; }
+          test -n "$RELEASE_GPG_PASSPHRASE" || { echo "DEEPWIND_RELEASE_GPG_PASSPHRASE is required" >&2; exit 2; }
+          jq -e --arg key "$RELEASE_GPG_KEY_ID" '
+            .formatVersion == 1 and
+            any(.keys[]; .id == $key and .status == "active" and (.fingerprint|test("^[A-F0-9]{40}$"))) and
+            ([.revokedKeyIds[]] | index($key) | not)
+          ' release/keys/public-keyring.json >/dev/null || {
+            echo "release key is absent, inactive, malformed, or revoked in release/keys/public-keyring.json" >&2
+            exit 2
+          }
+
+          ASSETS="$RUNNER_TEMP/deepwind-release-assets"
+          export GNUPGHOME="$RUNNER_TEMP/deepwind-release-gnupg"
+          rm -rf "$ASSETS"
+          mkdir -p "$ASSETS" "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+          export SOURCE_DATE_EPOCH
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+
+          PLUGIN_MANIFEST=plugins/deepwind-harness/.codex-plugin/plugin.json
+          if [ -f "$PLUGIN_MANIFEST" ]; then
+            test "$(jq -r '.version' "$PLUGIN_MANIFEST")" = "$VERSION_FROM_TAG" || {
+              echo "Codex plugin version does not match immutable tag $TAG" >&2
+              exit 2
+            }
+          fi
+
+          build_target() {
+            target="$1"; shift
+            output="$ASSETS/deepwind-harness-${target}-v${VERSION_FROM_TAG}.tar.gz"
+            # File arguments are an explicit allowlist.  GNU tar options make
+            # equivalent tag trees produce byte-identical archives.
+            tar --sort=name --mtime="@${SOURCE_DATE_EPOCH}" --owner=0 --group=0 --numeric-owner \
+              -czf "$output" "$@"
+            BUILD_ARGS+=(--archive "${target}=${output}")
+          }
+          BUILD_ARGS=()
+          build_target claude agents skills frameworks payload CLAUDE.md.starter LICENSE VERSION
+          # The Codex archive becomes part of this same signed contract only
+          # after the Codex plugin and role pack exist (DW-003/DW-004).
+          if [ -d plugins/deepwind-harness ] && [ -d codex/agents ]; then
+            build_target codex .agents/plugins/marketplace.json plugins/deepwind-harness codex/agents LICENSE VERSION
+          fi
+          bash release/scan-release-archives.sh "$ASSETS"/deepwind-harness-*.tar.gz
+
+          # The public website rewrites /install to this exact tag-scoped
+          # bootstrap asset. Its embedded keyring authenticates the signed
+          # manifest before any target archive is installed.
+          test -s release/keys/trusted-release-keyring.gpg || {
+            echo "trusted release keyring is required to build the bootstrap" >&2
+            exit 2
+          }
+          BOOTSTRAP="$ASSETS/deepwind-init-v${VERSION_FROM_TAG}.sh"
+          bash release/build-installer.sh "$BOOTSTRAP"
+          test -s "$BOOTSTRAP"
+
+          CHANNEL_CONFIG=config/channels/staging.json
+          jq -e '
+            .formatVersion == 1 and
+            .channel == "staging" and
+            .displayName == "DeepWind staging" and
+            .endpoint.alias == "deepwind-staging" and
+            .endpoint.url == "https://dev.deepwind.ai/mcp" and
+            .endpoint.transport == "streamable-http" and
+            .endpoint.oauth == "interactive"
+          ' "$CHANNEL_CONFIG" >/dev/null || {
+            echo "staging MCP channel violates the reviewed allowlist" >&2
+            exit 2
+          }
+          MCP_CHANNEL=$(jq -r '.channel' "$CHANNEL_CONFIG")
+          MCP_ALIAS=$(jq -r '.endpoint.alias' "$CHANNEL_CONFIG")
+          MCP_URL=$(jq -r '.endpoint.url' "$CHANNEL_CONFIG")
+
+          printf '%s' "$RELEASE_GPG_PRIVATE_KEY" | gpg --batch --import
+          ACTUAL_FINGERPRINT=$(gpg --batch --with-colons --list-keys "$RELEASE_GPG_KEY_ID" | awk -F: '$1 == "fpr" { print $10; exit }')
+          EXPECTED_FINGERPRINT=$(jq -r --arg key "$RELEASE_GPG_KEY_ID" '.keys[] | select(.id == $key) | .fingerprint' release/keys/public-keyring.json)
+          test "$ACTUAL_FINGERPRINT" = "$EXPECTED_FINGERPRINT" || { echo "release private key fingerprint does not match committed public keyring" >&2; exit 2; }
+
+          ./release/build-manifest.sh \
+            --version "$VERSION_FROM_TAG" --channel "$MCP_CHANNEL" \
+            --endpoint-alias "$MCP_ALIAS" --endpoint-url "$MCP_URL" \
+            --key-id "$RELEASE_GPG_KEY_ID" --not-before "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --not-after "$(date -u -d '+180 days' +%Y-%m-%dT%H:%M:%SZ)" \
+            --bootstrap "$BOOTSTRAP" \
+            --source-revision "$(git rev-parse HEAD)" --output "$ASSETS/deepwind-release-manifest.json" \
+            "${BUILD_ARGS[@]}"
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" \
+            --armor --detach-sign --local-user "$RELEASE_GPG_KEY_ID" \
+            --output "$ASSETS/deepwind-release-manifest.json.asc" "$ASSETS/deepwind-release-manifest.json"
+          jq -nS --arg tag "$TAG" --arg revision "$(git rev-parse HEAD)" --arg repo "$GITHUB_REPOSITORY" \
+            '{formatVersion:1,repository:$repo,tag:$tag,revision:$revision,builder:"weekly-release.yml",manifest:"deepwind-release-manifest.json"}' \
+            > "$ASSETS/deepwind-release-provenance.json"
+          cp release/keys/public-keyring.json "$ASSETS/public-keyring.json"
+          (cd "$ASSETS" && sha256sum deepwind-* public-keyring.json) > "$ASSETS/SHA256SUMS"
+          echo "assets_dir=$ASSETS" >> "$GITHUB_OUTPUT"
+          echo "manifest_sha256=$(sha256sum "$ASSETS/deepwind-release-manifest.json" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+          find "$ASSETS" -maxdepth 1 -type f -print | LC_ALL=C sort
 
       - name: Write release notes
         id: notes
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
-          ARCHIVE: ${{ steps.build.outputs.archive }}
-          SHA: ${{ steps.build.outputs.sha256 }}
-          SIZE: ${{ steps.build.outputs.size }}
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
+          MANIFEST_SHA: ${{ steps.build.outputs.manifest_sha256 }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           REASON: ${{ github.event.inputs.reason || '' }}
         run: |
           set -euo pipefail
           NOTES=$(mktemp)
-          SIZE_HUMAN=$(printf '%d' "$SIZE" | numfmt --to=iec)
           # REASON is free-form workflow_dispatch input — treated as untrusted
           # markdown body. Written to file via $REASON env (no shell interp).
           {
             echo "## Install"
             echo ""
             echo '```bash'
-            echo "curl -fsSL https://deepwind.ai/install/deepwind-init.sh | bash"
+            echo "curl -fsSL https://deepwind.ai/install | bash"
             echo '```'
             echo ""
-            echo "## Full package (offline install)"
+            echo "## Immutable release assets"
             echo ""
-            echo "- **\`${ARCHIVE}\`** (${SIZE_HUMAN} gzipped)"
-            echo "- SHA-256: \`${SHA}\`"
+            echo "- Signed manifest SHA-256: \`${MANIFEST_SHA}\`"
+            echo "- Versioned bootstrap: \`deepwind-init-${TAG}.sh\`"
+            echo "- Target archives, \`SHA256SUMS\`, detached manifest signature, provenance, and public keyring are attached to this exact tag."
             echo ""
             echo '```bash'
-            echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ARCHIVE} -o ${ARCHIVE}"
-            echo "echo \"${SHA}  ${ARCHIVE}\" | shasum -a 256 -c -"
-            echo "mkdir deepwind-harness && tar -xzf ${ARCHIVE} -C deepwind-harness && cd deepwind-harness"
-            echo "./install.sh"
+            echo "curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/deepwind-init-${TAG}.sh"
+            echo "curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/deepwind-release-manifest.json"
+            echo "curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/deepwind-release-manifest.json.asc"
             echo '```'
             if [ -n "$REASON" ]; then
               echo ""
@@ -274,17 +467,21 @@ jobs:
           } > "$NOTES"
           echo "notes_file=$NOTES" >> "$GITHUB_OUTPUT"
 
-      - name: Create or update release + upload asset
+      - name: Create immutable release and upload verified assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.tag.outputs.tag }}
-          ARCHIVE: ${{ steps.build.outputs.archive }}
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
+          ASSETS_DIR: ${{ steps.build.outputs.assets_dir }}
         run: |
           set -euo pipefail
           if gh release view "${TAG}" >/dev/null 2>&1; then
-            gh release edit "${TAG}" --notes-file "${NOTES_FILE}"
-          else
-            gh release create "${TAG}" --title "${TAG}" --notes-file "${NOTES_FILE}"
+            echo "refusing to alter existing release ${TAG}; release assets are immutable" >&2
+            exit 2
           fi
-          gh release upload "${TAG}" "${ARCHIVE}" --clobber
+          RELEASE_KIND_FLAGS=(--latest)
+          case "${TAG}" in
+            *-*) RELEASE_KIND_FLAGS=(--prerelease --latest=false) ;;
+          esac
+          gh release create "${TAG}" --title "${TAG}" --notes-file "${NOTES_FILE}" \
+            "${RELEASE_KIND_FLAGS[@]}" "$ASSETS_DIR"/*

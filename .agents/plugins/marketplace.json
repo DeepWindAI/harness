@@ -1,0 +1,20 @@
+{
+  "name": "deepwind",
+  "interface": {
+    "displayName": "DeepWind"
+  },
+  "plugins": [
+    {
+      "name": "deepwind-harness",
+      "source": {
+        "source": "local",
+        "path": "./plugins/deepwind-harness"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

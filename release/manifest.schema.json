@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://deepwind.ai/schemas/release-manifest-v1.json",
+  "title": "DeepWind immutable release manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["formatVersion", "version", "tag", "channel", "endpoint", "signing", "provenance", "bootstrap", "archives"],
+  "properties": {
+    "formatVersion": { "const": 1 },
+    "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$" },
+    "tag": { "type": "string", "pattern": "^v" },
+    "channel": { "enum": ["staging", "production"] },
+    "endpoint": {
+      "type": "object", "additionalProperties": false,
+      "required": ["alias", "url"],
+      "properties": {
+        "alias": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,62}$" },
+        "url": { "type": "string", "pattern": "^https://[A-Za-z0-9.-]+(?:/[^?#]*)?$" }
+      }
+    },
+    "signing": {
+      "type": "object", "additionalProperties": false,
+      "required": ["keyId", "notBefore", "notAfter", "signatureFile"],
+      "properties": {
+        "keyId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$" },
+        "notBefore": { "type": "string", "format": "date-time" },
+        "notAfter": { "type": "string", "format": "date-time" },
+        "signatureFile": { "const": "deepwind-release-manifest.json.asc" }
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "revision"],
+      "properties": {
+        "repository": { "const": "DeepWindAI/harness" },
+        "revision": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" }
+      }
+    },
+    "bootstrap": {
+      "type": "object", "additionalProperties": false,
+      "required": ["file", "sha256", "bytes"],
+      "properties": {
+        "file": { "type": "string", "pattern": "^deepwind-init-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?\\.sh$" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 2097152 }
+      }
+    },
+    "archives": {
+      "type": "array", "minItems": 1, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["target", "file", "sha256", "bytes", "files"],
+        "properties": {
+          "target": { "enum": ["claude", "codex"] },
+          "file": { "type": "string", "pattern": "^deepwind-harness-(claude|codex)-v.+\\.tar\\.gz$" },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+          "bytes": { "type": "integer", "minimum": 1 },
+          "files": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$)).+" } }
+        }
+      }
+    }
+  }
+}

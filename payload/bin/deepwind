@@ -23,16 +23,15 @@
 #   landing during an active Claude Code session.
 #
 # Environment overrides:
-#   DEEPWIND_INSTALL_DIR    Where the version marker lives (default ~/.deepwind/install)
-#   DEEPWIND_VERSION_MANIFEST_URL  Override the remote VERSION URL
+#   DEEPWIND_INSTALL_DIR    Where target version markers live (default ~/.deepwind/install)
+#   DEEPWIND_RELEASES_API_URL  Override the immutable-release discovery API
 #   DEEPWIND_INIT_URL       Override the installer URL (for forks/staging)
 
 set -euo pipefail
 
 DEEPWIND_INSTALL_DIR="${DEEPWIND_INSTALL_DIR:-$HOME/.deepwind/install}"
-DEEPWIND_CACHE_DIR="${HOME}/.cache/deepwind"
-DEEPWIND_VERSION_MANIFEST_URL="${DEEPWIND_VERSION_MANIFEST_URL:-https://raw.githubusercontent.com/DeepWindAI/harness/main/VERSION}"
-DEEPWIND_INIT_URL="${DEEPWIND_INIT_URL:-https://deepwind.ai/install/deepwind-init.sh}"
+DEEPWIND_RELEASES_API_URL="${DEEPWIND_RELEASES_API_URL:-https://api.github.com/repos/DeepWindAI/harness/releases/latest}"
+DEEPWIND_INIT_URL="${DEEPWIND_INIT_URL:-https://deepwind.ai/install}"
 
 bold()  { printf '\033[1m%s\033[0m\n' "$*"; }
 ok()    { printf '  \033[32m✓\033[0m %s\n' "$*"; }
@@ -44,17 +43,30 @@ dim()   { printf '  \033[2m%s\033[0m\n' "$*"; }
 # Helpers
 # ----------------------------------------------------------------------------
 local_version() {
-  if [[ -f "$DEEPWIND_INSTALL_DIR/VERSION" ]]; then
-    tr -d '[:space:]' < "$DEEPWIND_INSTALL_DIR/VERSION"
-  else
+  local claude_version="" codex_version=""
+  if [[ -f "$DEEPWIND_INSTALL_DIR/share/claude/VERSION" ]]; then
+    claude_version=$(tr -d '[:space:]' < "$DEEPWIND_INSTALL_DIR/share/claude/VERSION")
+  fi
+  if [[ -f "$DEEPWIND_INSTALL_DIR/share/codex/VERSION" ]]; then
+    codex_version=$(tr -d '[:space:]' < "$DEEPWIND_INSTALL_DIR/share/codex/VERSION")
+  fi
+  if [[ -n "$claude_version" && -n "$codex_version" && "$claude_version" != "$codex_version" ]]; then
+    warn "installed target versions differ (claude=$claude_version, codex=$codex_version)"
     echo ""
+  elif [[ -n "$claude_version" ]]; then
+    echo "$claude_version"
+  else
+    echo "$codex_version"
   fi
 }
 
 remote_version() {
   # 2s timeout — never block on a slow network
-  curl -fsSL --max-time 2 "$DEEPWIND_VERSION_MANIFEST_URL" 2>/dev/null \
-    | tr -d '[:space:]'
+  command -v jq >/dev/null 2>&1 || return 0
+  curl -fsSL --max-time 2 "$DEEPWIND_RELEASES_API_URL" 2>/dev/null \
+    | jq -er '.tag_name | select(type == "string")' 2>/dev/null \
+    | sed 's/^v//' \
+    || true
 }
 
 # True if any process whose command line looks like Claude Code (the desktop
@@ -99,7 +111,7 @@ cmd_status() {
 
   bold "DeepWind status"
   if [[ -z "$local_v" ]]; then
-    err "no installed version found at $DEEPWIND_INSTALL_DIR/VERSION"
+    err "no coherent installed version found under $DEEPWIND_INSTALL_DIR/share/{claude,codex}/VERSION"
     dim "run 'deepwind update' to install"
     return 1
   fi
@@ -176,11 +188,13 @@ cmd_doctor() {
   bold "DeepWind doctor"
   local issues=0
 
-  # 1. VERSION marker
-  if [[ -f "$DEEPWIND_INSTALL_DIR/VERSION" ]]; then
-    ok "version marker: $DEEPWIND_INSTALL_DIR/VERSION"
+  # 1. Target VERSION markers
+  local installed_v
+  installed_v=$(local_version)
+  if [[ -n "$installed_v" ]]; then
+    ok "target version marker(s): $installed_v"
   else
-    err "version marker missing: $DEEPWIND_INSTALL_DIR/VERSION"
+    err "target version marker missing or inconsistent under $DEEPWIND_INSTALL_DIR/share"
     issues=$((issues+1))
   fi
 
