@@ -104,13 +104,48 @@ jobs:
           git push origin main
           git push origin "${TAG}"
 
-  installer-matrix:
+  resolve-release-ref:
+    # Produce one immutable release tag for every trigger. Both the test matrix
+    # and the signing job consume this output, so neither can drift to a newer
+    # main commit between jobs.
     needs: [ bump-and-release ]
     if: |
       always() && (
         github.event_name == 'push' ||
         (needs.bump-and-release.result == 'success' && needs.bump-and-release.outputs.tag != '')
       )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.release-ref.outputs.tag }}
+    steps:
+      - name: Resolve immutable release tag
+        id: release-ref
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+          BUMP_TAG: ${{ needs.bump-and-release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "push" ]; then
+            TAG="$GITHUB_REF_NAME"
+          else
+            TAG="$BUMP_TAG"
+          fi
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+]+)?$'; then
+            echo "invalid tag format: '$TAG'" >&2
+            exit 2
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "  release ref: $TAG"
+
+  installer-matrix:
+    needs: [ bump-and-release, resolve-release-ref ]
+    if: |
+      always() &&
+      needs.resolve-release-ref.result == 'success' &&
+      needs.resolve-release-ref.outputs.tag != ''
     name: installer matrix (${{ matrix.name }})
     permissions:
       contents: read
@@ -126,8 +161,12 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ github.event_name == 'push' && github.ref || 'main' }}
+          ref: ${{ needs.resolve-release-ref.outputs.tag }}
           persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
 
       - name: Validate workflow syntax
         uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7
@@ -138,11 +177,14 @@ jobs:
           set -euo pipefail
           if [ "${RUNNER_OS}" = Linux ]; then
             sudo apt-get update
-            sudo apt-get install -y bats shellcheck
+            sudo apt-get install -y bats ripgrep shellcheck
           else
             brew update
-            brew install bats-core shellcheck
+            brew install bats-core ripgrep shellcheck
           fi
+          npm install --global @openai/codex@0.145.0
+          test "$(codex --version)" = "codex-cli 0.145.0"
+          python3 -c 'import sys, tomllib; assert sys.version_info >= (3, 11)'
 
       - name: Verify generated standalone installer is current
         shell: bash
@@ -171,111 +213,39 @@ jobs:
             tests/plugin/*.sh tests/doctor/*.sh tests/docs/*.sh
 
   build-and-release:
-    needs: [ bump-and-release, installer-matrix ]
+    needs: [ bump-and-release, resolve-release-ref, installer-matrix ]
     if: |
       always() &&
+      needs.resolve-release-ref.result == 'success' &&
       needs.installer-matrix.result == 'success' &&
-      (
-        github.event_name == 'push' ||
-        (needs.bump-and-release.result == 'success' && needs.bump-and-release.outputs.tag != '')
-      )
+      needs.resolve-release-ref.outputs.tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Resolve tag
-        id: tag
-        env:
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          EVENT_NAME: ${{ github.event_name }}
-          BUMP_TAG: ${{ needs.bump-and-release.outputs.tag }}
-        run: |
-          set -euo pipefail
-          if [ "$EVENT_NAME" = "push" ]; then
-            TAG="$GITHUB_REF_NAME"
-          else
-            TAG="$BUMP_TAG"
-          fi
-          # Validate tag format: vMAJOR.MINOR.PATCH with optional -prerelease.
-          # Prevents shell metacharacters / path-traversal in subsequent steps.
-          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.+]+)?$'; then
-            echo "invalid tag format: '$TAG'" >&2
-            exit 2
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "  building release for $TAG"
-
       - name: Checkout tag
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ steps.tag.outputs.tag }}
-          fetch-depth: 0  # need main history for the optional VERSION-sync below
+          ref: ${{ needs.resolve-release-ref.outputs.tag }}
+          fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Self-correct VERSION to match tag
-        # Reason: when triggered by a manual `git tag v1.x.y && git push --tags`
-        # (bypassing the bump-and-release job), the checked-out tag's tree may
-        # have a stale VERSION. We force-write VERSION to match the tag name
-        # so the tarball's internal VERSION file is always consistent with the
-        # release that ships it. This step is a no-op when bump-and-release
-        # ran first (VERSION is already correct in that case).
-        #
-        # Defect surfaced 2026-06-21 when v1.0.1 release shipped a tarball
-        # containing VERSION=1.0.0, breaking the version-check banner.
+      - name: Verify immutable tag version
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
         run: |
           set -euo pipefail
           VERSION_FROM_TAG="${TAG#v}"
           CURRENT=$(tr -d '[:space:]' < VERSION)
-          if [ "$CURRENT" != "$VERSION_FROM_TAG" ]; then
-            echo "  syncing VERSION: $CURRENT → $VERSION_FROM_TAG (from tag $TAG)"
-            echo "$VERSION_FROM_TAG" > VERSION
-          else
-            echo "  VERSION already matches tag ($VERSION_FROM_TAG)"
-          fi
-
-      - name: Sync VERSION on main when triggered by tag push
-        # When this workflow fires from `on: push: tags:` (manual tag push),
-        # main's VERSION may still be ahead-of/behind the tag because
-        # bump-and-release didn't run. Update main to match so future cron
-        # runs bump from the right baseline + the website's /install/VERSION
-        # endpoint reflects what's actually published.
-        if: github.event_name == 'push'
-        env:
-          TAG: ${{ steps.tag.outputs.tag }}
-        run: |
-          set -euo pipefail
-          VERSION_FROM_TAG="${TAG#v}"
-          git fetch origin main --quiet
-          git checkout origin/main -- VERSION 2>/dev/null || true
-          MAIN_CURRENT=$(tr -d '[:space:]' < VERSION)
-          if [ "$MAIN_CURRENT" = "$VERSION_FROM_TAG" ]; then
-            echo "  main's VERSION already matches; no sync needed"
-            # restore the tag's tree before the build step reads it
-            git checkout "${TAG}" -- VERSION 2>/dev/null || echo "$VERSION_FROM_TAG" > VERSION
-            exit 0
-          fi
-          echo "  main's VERSION=$MAIN_CURRENT, tag is $VERSION_FROM_TAG — pushing sync commit"
-          # Write the new VERSION + commit on a temp branch, then push to main
-          git config user.name "deepwind-bot"
-          git config user.email "deepwind-bot@users.noreply.github.com"
-          # Recover to tag tree first (we trashed VERSION via checkout origin/main)
-          echo "$VERSION_FROM_TAG" > VERSION
-          # Push the sync commit onto main directly
-          BRANCH="sync-version-${TAG}"
-          git checkout -b "$BRANCH" "origin/main"
-          echo "$VERSION_FROM_TAG" > VERSION
-          git add VERSION
-          git commit -m "release: sync VERSION to $TAG (tag-push self-correction)" || { echo "  no changes"; exit 0; }
-          git push origin "HEAD:main"
-          # Back to the tag for build step
-          git checkout "${TAG}"
+          test "$CURRENT" = "$VERSION_FROM_TAG" || {
+            echo "tag $TAG points to VERSION=$CURRENT; refusing to mutate or release a different tree" >&2
+            exit 2
+          }
 
       - name: Build immutable target archives and release manifest
         id: build
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           RELEASE_GPG_KEY_ID: ${{ secrets.DEEPWIND_RELEASE_GPG_KEY_ID }}
           RELEASE_GPG_PRIVATE_KEY: ${{ secrets.DEEPWIND_RELEASE_GPG_PRIVATE_KEY }}
@@ -385,7 +355,7 @@ jobs:
       - name: Write release notes
         id: notes
         env:
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
           MANIFEST_SHA: ${{ steps.build.outputs.manifest_sha256 }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           REASON: ${{ github.event.inputs.reason || '' }}
@@ -428,7 +398,7 @@ jobs:
       - name: Create immutable release and upload verified assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.tag.outputs.tag }}
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
           NOTES_FILE: ${{ steps.notes.outputs.notes_file }}
           ASSETS_DIR: ${{ steps.build.outputs.assets_dir }}
         run: |

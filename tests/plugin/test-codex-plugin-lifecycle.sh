@@ -4,10 +4,14 @@ IFS=$'\n\t'
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 
-if ! command -v codex >/dev/null 2>&1; then
-  printf 'SKIP: codex CLI is not installed\n'
-  exit 0
-fi
+command -v codex >/dev/null 2>&1 || {
+  printf 'FAIL: codex CLI 0.145.0 is required for lifecycle validation\n' >&2
+  exit 1
+}
+[ "$(codex --version)" = "codex-cli 0.145.0" ] || {
+  printf 'FAIL: lifecycle validation requires codex-cli 0.145.0\n' >&2
+  exit 1
+}
 
 fixture=$(realpath "$(mktemp -d "${TMPDIR:-/tmp}/deepwind-plugin-lifecycle.XXXXXX")")
 trap 'find "$fixture" -depth -type f -exec rm -f {} \; 2>/dev/null || true; find "$fixture" -depth -type d -exec rmdir {} \; 2>/dev/null || true' EXIT

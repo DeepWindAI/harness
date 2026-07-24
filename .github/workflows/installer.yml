@@ -3,7 +3,11 @@ name: installer-contract
 on:
   pull_request:
     paths:
+      - 'install.sh'
       - 'deepwind-init.sh'
+      - 'CLAUDE.md.starter'
+      - 'LICENSE'
+      - 'VERSION'
       - 'lib/**'
       - 'agents/**'
       - 'skills/**'
@@ -26,7 +30,11 @@ on:
   push:
     branches: [main]
     paths:
+      - 'install.sh'
       - 'deepwind-init.sh'
+      - 'CLAUDE.md.starter'
+      - 'LICENSE'
+      - 'VERSION'
       - 'lib/**'
       - 'agents/**'
       - 'skills/**'
@@ -70,6 +78,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.11'
+
       - name: Validate workflow syntax
         uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7
 
@@ -79,11 +91,14 @@ jobs:
           set -euo pipefail
           if [ "${RUNNER_OS}" = Linux ]; then
             sudo apt-get update
-            sudo apt-get install -y bats shellcheck
+            sudo apt-get install -y bats ripgrep shellcheck
           else
             brew update
-            brew install bats-core shellcheck
+            brew install bats-core ripgrep shellcheck
           fi
+          npm install --global @openai/codex@0.145.0
+          test "$(codex --version)" = "codex-cli 0.145.0"
+          python3 -c 'import sys, tomllib; assert sys.version_info >= (3, 11)'
 
       - name: Verify generated standalone installer is current
         shell: bash

@@ -46,16 +46,33 @@ require_literal 'bash release/scan-release-archives.sh'
 require_literal '--prerelease --latest=false'
 
 # The release-producing workflow is fail-closed: both tag pushes and automated
-# bump paths must pass the portable matrix before build-and-release can start.
-require_job_literal "$WORKFLOW" build-and-release 'needs: [ bump-and-release, installer-matrix ]'
+# bump paths resolve one immutable tag. The matrix and signer check out that
+# exact shared ref, never a moving main branch.
+require_job_literal "$WORKFLOW" resolve-release-ref 'needs: [ bump-and-release ]'
+require_job_literal "$WORKFLOW" resolve-release-ref 'tag: ${{ steps.release-ref.outputs.tag }}'
+require_job_literal "$WORKFLOW" installer-matrix \
+  'needs: [ bump-and-release, resolve-release-ref ]'
+require_job_literal "$WORKFLOW" installer-matrix \
+  'ref: ${{ needs.resolve-release-ref.outputs.tag }}'
+require_job_literal "$WORKFLOW" build-and-release \
+  'needs: [ bump-and-release, resolve-release-ref, installer-matrix ]'
+require_job_literal "$WORKFLOW" build-and-release \
+  'ref: ${{ needs.resolve-release-ref.outputs.tag }}'
 require_job_literal "$WORKFLOW" build-and-release "needs.installer-matrix.result == 'success' &&"
 matrix_guard_line=$(job_block "$WORKFLOW" build-and-release \
   | grep -nF "needs.installer-matrix.result == 'success' &&" | cut -d: -f1)
-push_path_line=$(job_block "$WORKFLOW" build-and-release \
-  | grep -nF "github.event_name == 'push' ||" | cut -d: -f1)
-if [ -z "$matrix_guard_line" ] || [ -z "$push_path_line" ] \
-  || [ "$matrix_guard_line" -ge "$push_path_line" ]; then
+release_ref_line=$(job_block "$WORKFLOW" build-and-release \
+  | grep -nF "needs.resolve-release-ref.outputs.tag != ''" | cut -d: -f1)
+if [ -z "$matrix_guard_line" ] || [ -z "$release_ref_line" ] \
+  || [ "$matrix_guard_line" -ge "$release_ref_line" ]; then
   fail 'tag-push release path can bypass the installer matrix'
+fi
+if job_block "$WORKFLOW" installer-matrix | grep -F "ref: main" >/dev/null; then
+  fail 'release matrix tests moving main instead of the immutable release tag'
+fi
+if job_block "$WORKFLOW" build-and-release \
+  | grep -F 'echo "$VERSION_FROM_TAG" > VERSION' >/dev/null; then
+  fail 'release job mutates the tested tag tree before signing'
 fi
 
 # Least privilege belongs at job scope. Test-only matrix jobs never retain a
@@ -85,21 +102,49 @@ for workflow_file in "$WORKFLOW" "$INSTALLER_WORKFLOW"; do
     'uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5'
   require_in "$workflow_file" \
     'uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7'
+  require_in "$workflow_file" \
+    'uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5'
+  require_in "$workflow_file" "python-version: '3.11'"
+  require_in "$workflow_file" 'sudo apt-get install -y bats ripgrep shellcheck'
+  require_in "$workflow_file" 'brew install bats-core ripgrep shellcheck'
+  require_in "$workflow_file" 'npm install --global @openai/codex@0.145.0'
+  require_in "$workflow_file" 'test "$(codex --version)" = "codex-cli 0.145.0"'
+  require_in "$workflow_file" \
+    "python3 -c 'import sys, tomllib; assert sys.version_info >= (3, 11)'"
   require_in "$workflow_file" 'bash tests/plugin/test-codex-plugin.sh'
   require_in "$workflow_file" 'bash tests/plugin/assert-child-mcp-policy.sh'
   require_in "$workflow_file" 'bash tests/plugin/test-codex-plugin-lifecycle.sh'
   require_in "$workflow_file" 'bash tests/doctor/run-shell-tests.sh'
   require_in "$workflow_file" 'bash tests/docs/test-installation-docs.sh'
 done
+if grep -F 'SKIP: codex CLI is not installed' \
+  "$ROOT/tests/plugin/test-codex-plugin-lifecycle.sh" >/dev/null; then
+  fail 'Codex lifecycle test may skip instead of enforcing the pinned CLI'
+fi
+require_in "$ROOT/tests/plugin/test-codex-plugin-lifecycle.sh" \
+  '[ "$(codex --version)" = "codex-cli 0.145.0" ]'
 for path_filter in \
+  "- 'install.sh'" \
+  "- 'deepwind-init.sh'" \
+  "- 'CLAUDE.md.starter'" \
+  "- 'LICENSE'" \
+  "- 'VERSION'" \
+  "- 'lib/**'" \
+  "- 'agents/**'" \
+  "- 'skills/**'" \
+  "- 'frameworks/**'" \
+  "- 'payload/**'" \
   "- '.agents/**'" \
   "- 'plugins/**'" \
   "- 'codex/**'" \
   "- 'config/channels/**'" \
+  "- 'release/**'" \
   "- 'tests/plugin/**'" \
   "- 'tests/doctor/**'" \
   "- 'tests/docs/**'"; do
-  require_in "$INSTALLER_WORKFLOW" "$path_filter"
+  occurrences=$(grep -F -- "$path_filter" "$INSTALLER_WORKFLOW" | wc -l | tr -d '[:space:]')
+  [ "$occurrences" -eq 2 ] \
+    || fail "installer.yml must cover $path_filter for both PR and main push"
 done
 
 # The release filename varies only by version; the bytes are reproducible from
