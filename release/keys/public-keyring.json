@@ -1,6 +1,12 @@
 {
   "formatVersion": 1,
-  "keys": [],
+  "keys": [
+    {
+      "id": "137303DCB5487FF89CC6328AFCFA82E0B9CC3F63",
+      "fingerprint": "137303DCB5487FF89CC6328AFCFA82E0B9CC3F63",
+      "status": "active"
+    }
+  ],
   "revokedKeyIds": [],
   "rotation": {
     "policy": "Add a successor key before its first release; keep an unrevoked predecessor until all supported bootstrap versions trust the successor. Revocation is explicit and permanent.",
