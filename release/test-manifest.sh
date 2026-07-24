@@ -4,7 +4,7 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 BUILD="$ROOT/release/build-manifest.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/deepwind-manifest-test.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
@@ -18,6 +18,13 @@ expect_fail() {
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}';
   else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+validate_schema() {
+  npx --yes \
+    --package ajv-cli@5.0.0 \
+    --package ajv-formats@3.0.1 \
+    ajv validate --spec=draft2020 -c ajv-formats \
+    -s "$ROOT/release/manifest.schema.json" -d "$1"
 }
 
 mkdir -p "$TMP/claude/agents" "$TMP/codex/plugins"
@@ -66,7 +73,12 @@ jq -e --arg sha "$(sha256 "$TMP/deepwind-init-v1.2.3.sh")" \
     }
   ' "$TMP/manifest-a.json" >/dev/null || fail 'versioned bootstrap contract missing'
 jq -e '(.archives | length == 2) and (.endpoint.alias == "deepwind-staging")' "$TMP/manifest-a.json" >/dev/null || fail 'required manifest fields missing'
-jq -e --slurpfile schema "$ROOT/release/manifest.schema.json" '.' "$TMP/manifest-a.json" >/dev/null || fail 'manifest is not JSON'
+validate_schema "$TMP/manifest-a.json" >/dev/null \
+  || fail 'generated manifest does not validate against the Draft 2020-12 schema'
+jq '.unexpected = true' "$TMP/manifest-a.json" > "$TMP/schema-invalid.json"
+expect_fail validate_schema "$TMP/schema-invalid.json"
+jq '.signing.notBefore = "not-a-date"' "$TMP/manifest-a.json" > "$TMP/schema-invalid-date.json"
+expect_fail validate_schema "$TMP/schema-invalid-date.json"
 
 mkdir -p "$TMP/bad/../escape" 2>/dev/null || true
 printf 'bad\n' > "$TMP/bad-file"

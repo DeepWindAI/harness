@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2034
+# shellcheck shell=bash disable=SC2015,SC2034
 # Journaled, atomic destination mutation and rollback.
 
 ensure_parent_directories() {

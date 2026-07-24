@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Static contract for the credential-free portion of the release workflow.
+# shellcheck disable=SC2016
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -18,6 +19,8 @@ require_literal 'bash release/build-installer.sh "$BOOTSTRAP"'
 require_literal '--bootstrap "$BOOTSTRAP"'
 require_literal 'sha256sum deepwind-* public-keyring.json'
 require_literal 'test -s "$BOOTSTRAP"'
+require_literal 'bash release/scan-release-archives.sh'
+require_literal '--prerelease --latest=false'
 
 # The release filename varies only by version; the bytes are reproducible from
 # the same tagged tree and never fetch executable content from a branch.
@@ -31,6 +34,24 @@ if grep -Eq \
   'raw[.]githubusercontent[.]com/[^ ]+/main/|/archive/refs/heads/main|/releases/download/main/' \
   "$WORKFLOW" "$TMP/deepwind-init-v1.2.3.sh"; then
   fail 'release contract contains a mutable-main asset URL'
+fi
+
+tar -C "$ROOT" -czf "$TMP/deepwind-harness-claude-v1.2.3.tar.gz" \
+  agents skills frameworks payload CLAUDE.md.starter LICENSE VERSION
+tar -C "$ROOT" -czf "$TMP/deepwind-harness-codex-v1.2.3.tar.gz" \
+  .agents/plugins/marketplace.json plugins/deepwind-harness codex/agents LICENSE VERSION
+bash "$ROOT/release/scan-release-archives.sh" \
+  "$TMP/deepwind-harness-claude-v1.2.3.tar.gz" \
+  "$TMP/deepwind-harness-codex-v1.2.3.tar.gz" >/dev/null \
+  || fail 'current release archive sources contain mutable or obsolete references'
+
+mkdir "$TMP/bad-archive"
+printf '%s\n' 'https://raw.githubusercontent.com/DeepWindAI/harness/main/VERSION' \
+  > "$TMP/bad-archive/legacy.txt"
+tar -C "$TMP/bad-archive" -czf "$TMP/deepwind-harness-bad-v1.2.3.tar.gz" legacy.txt
+if bash "$ROOT/release/scan-release-archives.sh" \
+  "$TMP/deepwind-harness-bad-v1.2.3.tar.gz" >/dev/null 2>&1; then
+  fail 'archive scanner accepted a mutable-main reference'
 fi
 
 printf 'PASS: versioned bootstrap release workflow contract\n'

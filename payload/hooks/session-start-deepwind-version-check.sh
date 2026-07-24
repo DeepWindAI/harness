@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # session-start-deepwind-version-check.sh
-# Daily check of the public deepwind-install repo's VERSION against what the
-# installer wrote locally. Advisory only — NEVER blocks, NEVER errors out.
+# Daily check of the latest immutable release against the Claude target version
+# installed locally. Advisory only — NEVER blocks, NEVER errors out.
 #
 # Installed by: deepwind-init.sh (copies into <repo>/.claude/hooks/ and adds
 # itself to .claude/settings.json's SessionStart array).
@@ -24,15 +24,14 @@ cat > /dev/null || true
 
 # Where the installer wrote the locally-installed version. If absent, the user
 # didn't install via deepwind-init — exit silent rather than nag.
-LOCAL_VERSION_FILE="$HOME/.deepwind/install/VERSION"
+LOCAL_VERSION_FILE="$HOME/.deepwind/install/share/claude/VERSION"
 [ -f "$LOCAL_VERSION_FILE" ] || exit 0
 
 LOCAL_VERSION="$(tr -d '[:space:]' < "$LOCAL_VERSION_FILE" 2>/dev/null || echo "")"
 [ -z "$LOCAL_VERSION" ] && exit 0
 
-# Public manifest URL. The installer pins this at install time so a future
-# repo rename doesn't strand existing installs. Override via env for testing.
-MANIFEST_URL="${DEEPWIND_VERSION_MANIFEST_URL:-https://raw.githubusercontent.com/deepwind/deepwind-install/main/VERSION}"
+# Public immutable-release discovery endpoint. Override via env for testing.
+RELEASES_API_URL="${DEEPWIND_RELEASES_API_URL:-https://api.github.com/repos/DeepWindAI/harness/releases/latest}"
 
 CACHE_DIR="$HOME/.cache/deepwind"
 CACHE_FILE="$CACHE_DIR/version.json"
@@ -55,8 +54,9 @@ fi
 #    blocks session start. Failures cache the *attempt* to avoid hammering
 #    GitHub when offline.
 if [ -z "$REMOTE_VERSION" ]; then
-  REMOTE_VERSION=$(curl -fsSL --max-time 2 "$MANIFEST_URL" 2>/dev/null \
-    | tr -d '[:space:]' \
+  REMOTE_VERSION=$(curl -fsSL --max-time 2 "$RELEASES_API_URL" 2>/dev/null \
+    | jq -er '.tag_name | select(type == "string")' 2>/dev/null \
+    | sed 's/^v//' \
     || echo "")
   if command -v jq >/dev/null 2>&1; then
     if [ -n "$REMOTE_VERSION" ]; then
@@ -87,8 +87,8 @@ fi
 # Remote is newer — emit advisory banner.
 {
   echo "[deepwind] new version available: $LOCAL_VERSION → $REMOTE_VERSION"
-  echo "           update:  curl -fsSL https://deepwind.ai/install/deepwind-init.sh | bash"
-  echo "           changes: https://github.com/deepwind/deepwind-install/releases/tag/v$REMOTE_VERSION"
+  echo "           update:  curl -fsSL https://deepwind.ai/install | bash"
+  echo "           changes: https://github.com/DeepWindAI/harness/releases/tag/v$REMOTE_VERSION"
   echo "           silence: DEEPWIND_VERSION_CHECK=0  (or set in your shell rc)"
 } >&2
 

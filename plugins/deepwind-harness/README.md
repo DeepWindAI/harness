@@ -12,6 +12,13 @@ configured marketplace snapshot. The signed DeepWind release keeps this director
 Set `DEEPWIND_RELEASE_ROOT` to the exact verified release directory that contains both
 `.agents/plugins/marketplace.json` and `plugins/deepwind-harness`.
 
+The verified installer offers the one-command, explicit opt-in path:
+
+```sh
+curl -fsSL https://deepwind.ai/install | bash -s -- \
+  --target codex --enable-codex-plugin
+```
+
 Fresh install and enable:
 
 ```sh
@@ -26,8 +33,11 @@ codex plugin marketplace list --json
 codex plugin list --json
 ```
 
-An installer check succeeds only when the `deepwind` marketplace resolves to the managed release
-root and `deepwind-harness@deepwind` is installed. It must not infer success from copied files.
+An installer check reports `enabled` only when the `deepwind` marketplace
+resolves to the managed release root and `deepwind-harness@deepwind` is
+installed, enabled, and at the requested release version. When the user has
+not opted in, it reports `not-enabled` with the opt-in command; it must not
+infer plugin enablement from copied files.
 
 Upgrade:
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build a deterministic manifest for already-built, immutable release archives.
 # This script does not fetch, extract, or trust a network resource.
+# shellcheck disable=SC2015
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -18,7 +19,16 @@ usage: build-manifest.sh --version SEMVER --channel staging|production --endpoin
 EOF
 exit 2; }
 
-VERSION= CHANNEL= ENDPOINT_ALIAS= ENDPOINT_URL= KEY_ID= NOT_BEFORE= NOT_AFTER= REVISION= BOOTSTRAP= OUTPUT=
+VERSION=
+CHANNEL=
+ENDPOINT_ALIAS=
+ENDPOINT_URL=
+KEY_ID=
+NOT_BEFORE=
+NOT_AFTER=
+REVISION=
+BOOTSTRAP=
+OUTPUT=
 ARCHIVES=()
 while [ "$#" -gt 0 ]; do
   case "$1" in

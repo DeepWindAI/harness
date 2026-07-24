@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2034
+# shellcheck shell=bash disable=SC2015,SC2034
 # Immutable release resolution, signature verification, and archive validation.
 
 RELEASES_BASE=https://github.com/DeepWindAI/harness/releases

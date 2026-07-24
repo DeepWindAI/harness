@@ -119,5 +119,13 @@ rg -q 'CODEX_MARKETPLACE_DIR' "$ROOT/lib/state.sh" \
   || fail 'installer has no release-contained Codex marketplace root'
 rg -q 'codex:\.agents/plugins/marketplace\.json' "$ROOT/lib/install-target.sh" \
   || fail 'installer does not map the release-contained marketplace'
+rg -q -- '--enable-codex-plugin' "$ROOT/lib/args.sh" \
+  || fail 'installer does not expose explicit plugin lifecycle opt-in'
+rg -q 'codex plugin marketplace add "\$CODEX_MARKETPLACE_DIR" --json' \
+  "$ROOT/lib/codex-plugin.sh" \
+  || fail 'installer does not use fixed argv for marketplace activation'
+rg -q 'codex plugin add deepwind-harness@deepwind --json' \
+  "$ROOT/lib/codex-plugin.sh" \
+  || fail 'installer does not use fixed argv for plugin activation'
 
 printf 'PASS: Codex plugin package and policy tests\n'

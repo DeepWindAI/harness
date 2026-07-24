@@ -1,4 +1,4 @@
-# shellcheck shell=bash disable=SC2034
+# shellcheck shell=bash disable=SC2015,SC2034
 # Environment, path-containment, lock, and state helpers.
 
 die() {

@@ -107,6 +107,7 @@ fi
 
 remove_fixture_release
 make_fixture_release
+# shellcheck disable=SC2002 # Deliberately verify the documented pipe install.
 cat "$FIXTURE_INSTALLER" | env \
   HOME="$FIXTURE_HOME" \
   PATH="$FIXTURE_ROOT/bin:$PATH" \

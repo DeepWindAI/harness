@@ -46,11 +46,12 @@ release content and does not use `main` as a payload reference.
 
 ## Release trust
 
-Release operators must commit an active public key and provision matching
-signing credentials before publishing. Until then, an empty keyring is
-intentional: public installation fails closed rather than using an unsigned
-development key. This does not remove the bootstrap TLS trust limitation; it
-limits trust after bootstrap to an immutable, verified release.
+The generated bootstrap embeds the active public key committed in
+`release/keys/public-keyring.json`. Release operators must provision matching
+signing credentials before publishing; the workflow fails closed when the
+private-key fingerprint differs or no active key is available. This does not
+remove the bootstrap TLS trust limitation; it limits trust after bootstrap to
+an immutable, verified release.
 
 ## Files and non-destructive behavior
 
@@ -76,9 +77,12 @@ curl -fsSL https://deepwind.ai/install | bash -s -- --dry-run
 
 Use `--check` to report drift without writing. A file changed since the last
 managed version is preserved by default. Do not use `--force` until you have
-made your own recoverable copy of every changed file; the installer's journal
-backs up files only for rollback during the current run, not as a retained user
-backup after a successful forced replacement. See [upgrading and removal](upgrading.md).
+reviewed every changed file. A successful forced replacement retains a private,
+timestamped recovery copy under `~/.deepwind/install/recovery/` and records its
+digest and original destination in `~/.deepwind/install/recovery.tsv`. Keep an
+independent user-owned backup for important customizations; the retained copy
+is a recovery aid, not a substitute for your backup policy. See
+[upgrading and removal](upgrading.md).
 
 ## Optional Claude hook
 

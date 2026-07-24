@@ -36,6 +36,10 @@ explicit role TOMLs under `~/.codex/agents`. The release manifest records every
 managed file; a modified file is preserved unless the user explicitly chooses
 `--force`.
 
+Codex plugin enablement is also explicit: add `--enable-codex-plugin` to the
+installer command to let the Codex CLI activate the verified release-contained
+marketplace and plugin.
+
 The installer does not configure MCP by default, including when both targets
 are selected. Optional Codex staging OAuth requires an interactive terminal,
 `--configure-mcp`, and the exact confirmation `yes`. It never copies or reads
@@ -45,11 +49,12 @@ of calling DeepWind.
 
 ## Release readiness
 
-Public installation is deliberately fail-closed until release operators provide
-an active public key in `release/keys/public-keyring.json` and matching signing
-credentials to the release workflow. An empty keyring is not a development
-fallback. See [installation](docs/installation.md#release-trust) for the
-bootstrap limitation and release-verification model.
+Public installation is fail-closed around the active public key committed in
+`release/keys/public-keyring.json` and embedded in the generated bootstrap.
+The release workflow must receive matching signing credentials; it refuses to
+publish when the private key does not match that reviewed fingerprint. See
+[installation](docs/installation.md#release-trust) for the bootstrap limitation
+and release-verification model.
 
 Every exact strict-semver release contains target-specific allowlisted archives,
 a deterministic versioned bootstrap (`deepwind-init-vX.Y.Z.sh`), `SHA256SUMS`,

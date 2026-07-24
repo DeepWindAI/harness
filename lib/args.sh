@@ -11,6 +11,7 @@ usage: deepwind-init.sh [options]
   --check                     verify and report drift without writing
   --force                     replace locally modified managed files
   --skip-hooks                do not install Claude session hooks
+  --enable-codex-plugin       opt in to enabling the verified Codex plugin
   --configure-mcp             interactively configure Codex MCP after install
   -h, --help
 EOF
@@ -23,6 +24,7 @@ parse_args() {
   MODE=install
   FORCE=0
   SKIP_HOOKS=0
+  ENABLE_CODEX_PLUGIN=0
   CONFIGURE_MCP=0
 
   while [ "$#" -gt 0 ]; do
@@ -60,6 +62,10 @@ parse_args() {
         SKIP_HOOKS=1
         shift
         ;;
+      --enable-codex-plugin)
+        ENABLE_CODEX_PLUGIN=1
+        shift
+        ;;
       --configure-mcp)
         CONFIGURE_MCP=1
         shift
@@ -81,6 +87,12 @@ parse_args() {
   case "$CHANNEL" in staging|production) ;; *) die "channel must be staging or production" ;; esac
   if [ "$CONFIGURE_MCP" -eq 1 ] && [ "$MODE" != install ]; then
     die "--configure-mcp cannot be combined with --dry-run or --check"
+  fi
+  if [ "$ENABLE_CODEX_PLUGIN" -eq 1 ] && [ "$MODE" != install ]; then
+    die "--enable-codex-plugin cannot be combined with --dry-run or --check"
+  fi
+  if [ "$ENABLE_CODEX_PLUGIN" -eq 1 ] && [ "$TARGET" = claude ]; then
+    die "--enable-codex-plugin requires target codex or both"
   fi
   if [ -n "$VERSION" ]; then
     printf '%s' "$VERSION" | grep -Eq \

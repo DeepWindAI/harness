@@ -1,4 +1,4 @@
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC2015
 # Convert verified archive members into an allowlisted destination plan.
 
 map_destination() {
@@ -186,5 +186,8 @@ check_plan() {
     esac
   done < "$PLAN_FILE"
   check_recovery_backups || drift=1
+  if target_selected codex; then
+    print_codex_plugin_status || drift=1
+  fi
   return "$drift"
 }

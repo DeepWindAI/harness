@@ -26,6 +26,10 @@ rg -Fq -- '--check' "$ROOT/docs/upgrading.md" \
   || fail 'upgrade guide does not document check mode'
 rg -Fq -- '--force' "$ROOT/docs/upgrading.md" \
   || fail 'upgrade guide does not document force-and-backup behavior'
+rg -Fq '~/.deepwind/install/recovery/' "$ROOT/docs/upgrading.md" \
+  || fail 'upgrade guide does not document durable forced-replacement recovery'
+rg -Fq -- '--enable-codex-plugin' "$ROOT/docs/codex.md" \
+  || fail 'Codex guide does not document one-command plugin opt-in'
 rg -Fq -- '--configure-mcp' "$ROOT/docs/codex.md" \
   || fail 'Codex guide does not document explicit MCP onboarding'
 rg -Fq 'no-workspace' "$ROOT/docs/codex.md" \

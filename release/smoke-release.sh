@@ -39,7 +39,9 @@ done
 printf '%s' "$VERSION" | grep -Eq '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$' \
   || fail 'version must be strict semver'
 is_https_url "$WEBSITE_URL" || fail '--website-url must be an HTTPS URL'
-[ -r "$KEYRING" ] && [ ! -L "$KEYRING" ] || fail '--keyring must be a readable regular file'
+if [ ! -r "$KEYRING" ] || [ -L "$KEYRING" ]; then
+  fail '--keyring must be a readable regular file'
+fi
 [ -s "$KEYRING" ] || fail '--keyring is empty; release smoke must fail closed'
 
 TAG="v$VERSION"
@@ -97,6 +99,10 @@ if grep -Eq 'raw[.]githubusercontent[.]com/[^[:space:]]+/main/|/archive/refs/hea
   "$TMP/deepwind-init-v$VERSION.sh" "$TMP/deepwind-release-manifest.json" "$TMP/deepwind-release-provenance.json"; then
   fail 'published release contains a mutable main reference'
 fi
+bash "$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)/scan-release-archives.sh" \
+  "$TMP/deepwind-harness-claude-v$VERSION.tar.gz" \
+  "$TMP/deepwind-harness-codex-v$VERSION.tar.gz" >/dev/null \
+  || fail 'published target archive contains a mutable or obsolete installer reference'
 
 curl -fLsSI --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 60 \
   "$WEBSITE_URL/install" > "$TMP/install.headers" \

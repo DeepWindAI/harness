@@ -46,10 +46,19 @@ cp "$HOME/.codex/agents/harness-coordinator.toml" "$HOME/deepwind-local-backup/"
 curl -fsSL https://deepwind.ai/install | bash -s -- --target codex --force
 ```
 
-Adapt the copied path to every file you choose to replace. The installer’s own
-backup journal exists only to roll back a failed or interrupted transaction; it
-is not retained as a post-success restore location. Restore your user-owned
-copy and run `--check` if you need to undo a successful forced replacement.
+Adapt the copied path to every file you choose to replace. In addition to its
+transaction rollback journal, the installer retains each successfully forced
+replacement as a private timestamped file below
+`~/.deepwind/install/recovery/`. The append-only
+`~/.deepwind/install/recovery.tsv` records the backup digest, retained path,
+and original destination. `--check` validates this recovery state and reports
+the retained backup count without printing private paths. Restore from your
+user-owned copy—or from a verified retained recovery record—and run `--check`
+if you need to undo a successful forced replacement.
+
+Retained recovery files are intentionally not pruned automatically. Inspect
+their `recovery.tsv` records before removing any backup, and keep the state file
+consistent with the recovery directory.
 
 On failure the installer rolls back files changed in that run. If it reports
 that manual repair is needed, preserve the reported recovery journal and do not

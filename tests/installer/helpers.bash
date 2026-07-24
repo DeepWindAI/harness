@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 
 TEST_ROOT=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 FIXTURE_CODEX_ROLES='frontend-developer
@@ -151,6 +152,53 @@ run_fixture_installer() {
     DEEPWIND_INSTALL_TESTING=1 \
     DEEPWIND_RELEASE_DIR="$FIXTURE_RELEASE" \
     bash "$FIXTURE_INSTALLER" --version 1.2.3 "$@"
+}
+
+write_fixture_codex_lifecycle_stub() {
+  cat > "$FIXTURE_ROOT/bin/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${HOME:?}"
+printf '%s\n' "$*" >> "$HOME/codex-plugin-calls"
+marketplace_state="$HOME/.fixture-codex-marketplace"
+plugin_state="$HOME/.fixture-codex-plugin"
+
+case "$*" in
+  "plugin marketplace list --json")
+    if [ -f "$marketplace_state" ]; then
+      jq -n --arg source "$(cat "$marketplace_state")" \
+        '{marketplaces:[{name:"deepwind",root:$source,marketplaceSource:{sourceType:"local",source:$source}}]}'
+    else
+      printf '%s\n' '{"marketplaces":[]}'
+    fi
+    ;;
+  "plugin marketplace add "*" --json")
+    source_path=${4}
+    printf '%s' "$source_path" > "$marketplace_state"
+    jq -n --arg source "$source_path" \
+      '{marketplaceName:"deepwind",installedRoot:$source,alreadyAdded:false}'
+    ;;
+  "plugin add deepwind-harness@deepwind --json")
+    [ -f "$marketplace_state" ]
+    : > "$plugin_state"
+    printf '%s\n' '{"pluginId":"deepwind-harness@deepwind","version":"1.2.3"}'
+    ;;
+  "plugin list --json")
+    if [ -f "$plugin_state" ]; then
+      source_path=$(cat "$marketplace_state")
+      jq -n --arg source "$source_path" \
+        '{installed:[{pluginId:"deepwind-harness@deepwind",version:"1.2.3",installed:true,enabled:true,marketplaceSource:{sourceType:"local",source:$source}}],available:[]}'
+    else
+      printf '%s\n' '{"installed":[],"available":[]}'
+    fi
+    ;;
+  *)
+    printf 'unexpected Codex fixture invocation: %s\n' "$*" >&2
+    exit 64
+    ;;
+esac
+EOF
+  chmod 755 "$FIXTURE_ROOT/bin/codex"
 }
 
 refresh_claude_fixture_archive() {

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Portable release-matrix contract. Bats wraps this in CI; keeping assertions
 # compatible with stock macOS Bash 3.2 enables local reproduction.
+# shellcheck disable=SC2016
 set -euo pipefail
 IFS=$'\n\t'
 
@@ -139,5 +140,14 @@ grep -F 'need_command curl' "$TEST_ROOT/deepwind-init.sh" >/dev/null || fail 'cu
 if grep -Eq 'need_command (wget|openssl)' "$TEST_ROOT/deepwind-init.sh"; then
   fail 'installer unexpectedly requires wget or openssl'
 fi
+grep -F '$DEEPWIND_INSTALL_DIR/share/claude/VERSION' \
+  "$TEST_ROOT/payload/bin/deepwind" >/dev/null \
+  || fail 'DeepWind CLI does not read the installed Claude target version'
+grep -F '$DEEPWIND_INSTALL_DIR/share/codex/VERSION' \
+  "$TEST_ROOT/payload/bin/deepwind" >/dev/null \
+  || fail 'DeepWind CLI does not read the installed Codex target version'
+grep -F '$HOME/.deepwind/install/share/claude/VERSION' \
+  "$TEST_ROOT/payload/hooks/session-start-deepwind-version-check.sh" >/dev/null \
+  || fail 'Claude hook does not read its installed target version'
 
 printf 'PASS: installer macOS/Linux release matrix contract\n'

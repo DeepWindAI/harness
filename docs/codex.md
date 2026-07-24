@@ -21,8 +21,22 @@ Install only the Codex target:
 curl -fsSL https://deepwind.ai/install | bash -s -- --target codex
 ```
 
-After a verified install, enable the packaged marketplace and plugin with the
-Codex plugin lifecycle commands:
+Plugin enablement is an explicit opt-in because Codex owns its user
+configuration and plugin cache. Install the files and enable the verified
+release-contained plugin in one command:
+
+```sh
+curl -fsSL https://deepwind.ai/install | bash -s -- \
+  --target codex --enable-codex-plugin
+```
+
+The installer first inspects the configured `deepwind` marketplace. It refuses
+to replace a marketplace with that name when it points outside the verified
+release root. It then delegates configuration and cache changes to the Codex
+CLI with fixed arguments; it never writes `~/.codex/config.toml` or a personal
+`~/.agents/plugins/marketplace.json` directly.
+
+The equivalent Codex plugin lifecycle commands are:
 
 ```sh
 codex plugin marketplace add "$HOME/.deepwind/install/share/codex-marketplace"
@@ -32,7 +46,9 @@ codex plugin list --json
 ```
 
 Start a new Codex thread after enabling or upgrading the plugin. The installer
-does not edit Codex configuration files or a personal marketplace catalog.
+does not enable it during an ordinary install. `--check` reports `enabled`,
+`not-enabled`, `outdated`, or `conflict` and gives the corresponding opt-in or
+repair action without changing Codex state.
 
 ## Optional staging OAuth
 

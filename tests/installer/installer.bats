@@ -16,6 +16,52 @@ teardown() {
   [ -f "$FIXTURE_HOME/.claude/agents/harness-coordinator.md" ]
   [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/.codex-plugin/plugin.json" ]
   [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/.agents/plugins/marketplace.json" ]
+  [ ! -e "$FIXTURE_HOME/codex-plugin-calls" ]
+}
+
+@test "explicit plugin opt-in enables the release-contained Codex plugin with fixed argv" {
+  write_fixture_codex_lifecycle_stub
+
+  run run_fixture_installer --target codex --enable-codex-plugin
+  [ "$status" -eq 0 ]
+  expected_marketplace="$FIXTURE_HOME/.deepwind/install/share/codex-marketplace"
+  [ "$(sed -n '1p' "$FIXTURE_HOME/codex-plugin-calls")" = "plugin marketplace list --json" ]
+  [ "$(sed -n '2p' "$FIXTURE_HOME/codex-plugin-calls")" = "plugin marketplace list --json" ]
+  [ "$(sed -n '3p' "$FIXTURE_HOME/codex-plugin-calls")" = "plugin marketplace add $expected_marketplace --json" ]
+  [ "$(sed -n '4p' "$FIXTURE_HOME/codex-plugin-calls")" = "plugin add deepwind-harness@deepwind --json" ]
+  [ "$(sed -n '5p' "$FIXTURE_HOME/codex-plugin-calls")" = "plugin marketplace list --json" ]
+  [ "$(sed -n '6p' "$FIXTURE_HOME/codex-plugin-calls")" = "plugin list --json" ]
+
+  : > "$FIXTURE_HOME/codex-plugin-calls"
+  run run_fixture_installer --target codex --check
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"plugin: enabled (deepwind-harness@deepwind 1.2.3)"* ]]
+  [ "$(cat "$FIXTURE_HOME/codex-plugin-calls")" = $'plugin marketplace list --json\nplugin list --json' ]
+}
+
+@test "plugin opt-in preserves a conflicting configured marketplace" {
+  write_fixture_codex_lifecycle_stub
+  printf '%s' "$FIXTURE_HOME/user-owned-marketplace" \
+    > "$FIXTURE_HOME/.fixture-codex-marketplace"
+
+  run run_fixture_installer --target codex --enable-codex-plugin
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"configured DeepWind marketplace points outside the verified release"* ]]
+  [ "$(cat "$FIXTURE_HOME/.fixture-codex-marketplace")" = "$FIXTURE_HOME/user-owned-marketplace" ]
+  [ "$(cat "$FIXTURE_HOME/codex-plugin-calls")" = "plugin marketplace list --json" ]
+  [ ! -e "$FIXTURE_HOME/.codex/agents/harness-coordinator.toml" ]
+  [ ! -e "$FIXTURE_HOME/.deepwind/install/state.tsv" ]
+}
+
+@test "check gives an actionable state when the Codex plugin was not opted in" {
+  write_fixture_codex_lifecycle_stub
+  run run_fixture_installer --target codex
+  [ "$status" -eq 0 ]
+
+  run run_fixture_installer --target codex --check
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"plugin: not-enabled"* ]]
+  [[ "$output" == *"--enable-codex-plugin"* ]]
 }
 
 @test "target accepts only claude, codex, or both" {
@@ -104,17 +150,15 @@ teardown() {
   [ ! -e "$FIXTURE_HOME/.codex" ]
 }
 
-@test "published installer has no runtime unsigned-test bypass" {
-  run env \
-    HOME="$FIXTURE_HOME" \
-    PATH="$FIXTURE_ROOT/bin:$PATH" \
-    DEEPWIND_INSTALL_TESTING=1 \
-    DEEPWIND_RELEASE_DIR="$FIXTURE_RELEASE" \
-    bash "$TEST_ROOT/deepwind-init.sh" --version 1.2.3
-  [ "$status" -ne 0 ]
-  [[ "$output" == *"no trusted release keyring is embedded"* ]]
-  [ ! -e "$FIXTURE_HOME/.claude" ]
-  [ ! -e "$FIXTURE_HOME/.codex" ]
+@test "committed installer is generated with the active trusted keyring" {
+  generated="$FIXTURE_ROOT/generated-installer.sh"
+  run bash "$TEST_ROOT/release/build-installer.sh" "$generated"
+  [ "$status" -eq 0 ]
+  run cmp "$TEST_ROOT/deepwind-init.sh" "$generated"
+  [ "$status" -eq 0 ]
+  run grep -Eq "^EMBEDDED_TRUSTED_KEYRING_B64='[^']+'$" \
+    "$TEST_ROOT/deepwind-init.sh"
+  [ "$status" -eq 0 ]
 }
 
 @test "release matrix covers transitions rollback boundaries and fixture containment" {
