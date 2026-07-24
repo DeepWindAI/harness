@@ -102,11 +102,66 @@ jobs:
           git push origin main
           git push origin "${TAG}"
 
-  build-and-release:
+  installer-matrix:
     needs: [ bump-and-release ]
     if: |
       always() && (
         github.event_name == 'push' ||
+        (needs.bump-and-release.result == 'success' && needs.bump-and-release.outputs.tag != '')
+      )
+    name: installer matrix (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-gnu-bash
+            os: ubuntu-22.04
+          - name: macos-bash-3-2
+            os: macos-13
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'push' && github.ref || 'main' }}
+
+      - name: Validate workflow syntax
+        uses: rhysd/actionlint@v1.7.7
+
+      - name: Install fixture test tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${RUNNER_OS}" = Linux ]; then
+            sudo apt-get update
+            sudo apt-get install -y bats shellcheck
+          else
+            brew update
+            brew install bats-core shellcheck
+          fi
+
+      - name: Verify generated standalone installer is current
+        shell: bash
+        run: |
+          set -euo pipefail
+          before=$(shasum -a 256 deepwind-init.sh | awk '{print $1}')
+          bash release/build-installer.sh deepwind-init.sh
+          after=$(shasum -a 256 deepwind-init.sh | awk '{print $1}')
+          test "$before" = "$after"
+
+      - name: Run release installer matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/installer/matrix-contract.sh
+          bats tests/installer
+          shellcheck deepwind-init.sh lib/*.sh tests/installer/*.sh tests/installer/*.bash
+
+  build-and-release:
+    needs: [ bump-and-release, installer-matrix ]
+    if: |
+      always() && (
+        github.event_name == 'push' ||
+        needs.installer-matrix.result == 'success' &&
         (needs.bump-and-release.result == 'success' && needs.bump-and-release.outputs.tag != '')
       )
     runs-on: ubuntu-latest

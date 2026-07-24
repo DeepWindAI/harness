@@ -1,0 +1,75 @@
+name: installer-contract
+
+on:
+  pull_request:
+    paths:
+      - 'deepwind-init.sh'
+      - 'lib/**'
+      - 'release/**'
+      - 'tests/installer/**'
+      - '.github/workflows/installer.yml'
+      - '.github/workflows/weekly-release.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'deepwind-init.sh'
+      - 'lib/**'
+      - 'release/**'
+      - 'tests/installer/**'
+      - '.github/workflows/installer.yml'
+      - '.github/workflows/weekly-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer-matrix:
+    name: ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-gnu-bash
+            os: ubuntu-22.04
+          - name: macos-bash-3-2
+            os: macos-13
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate workflow syntax
+        uses: rhysd/actionlint@v1.7.7
+
+      - name: Install test tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${RUNNER_OS}" = Linux ]; then
+            sudo apt-get update
+            sudo apt-get install -y bats shellcheck
+          else
+            brew update
+            brew install bats-core shellcheck
+          fi
+
+      - name: Verify generated standalone installer is current
+        shell: bash
+        run: |
+          set -euo pipefail
+          before=$(shasum -a 256 deepwind-init.sh | awk '{print $1}')
+          bash release/build-installer.sh deepwind-init.sh
+          after=$(shasum -a 256 deepwind-init.sh | awk '{print $1}')
+          test "$before" = "$after"
+
+      - name: Run portable fixture matrix
+        shell: bash
+        run: bash tests/installer/matrix-contract.sh
+
+      - name: Run Bats installer suite
+        shell: bash
+        run: bats tests/installer
+
+      - name: Run ShellCheck
+        shell: bash
+        run: shellcheck deepwind-init.sh lib/*.sh tests/installer/*.sh tests/installer/*.bash

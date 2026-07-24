@@ -21,6 +21,7 @@ make_fixture_release() {
   FIXTURE_INSTALLER="$FIXTURE_ROOT/deepwind-init.sh"
   mkdir -p \
     "$FIXTURE_HOME" \
+    "$FIXTURE_HOME/tmp" \
     "$FIXTURE_ROOT/bin" \
     "$FIXTURE_RELEASE/claude/agents" \
     "$FIXTURE_RELEASE/claude/skills/harness-prep" \
@@ -39,6 +40,18 @@ make_fixture_release() {
     '[ "$(cat "$3")" = "TEST-SIGNATURE" ]' \
     '[ -s "$4" ]' > "$FIXTURE_ROOT/bin/gpgv"
   chmod 755 "$FIXTURE_ROOT/bin/gpgv"
+
+  # These seams make it a test failure if an ordinary fixture installation
+  # reaches a real network or either host CLI. They write only within HOME.
+  for fixture_tool in curl wget openssl codex claude; do
+    printf '%s\n' \
+      '#!/usr/bin/env bash' \
+      'set -eu' \
+      ': "${HOME:?}"' \
+      'printf "%s\\n" "${0##*/}" >> "$HOME/.deepwind-test-tool-invocations"' \
+      'exit 97' > "$FIXTURE_ROOT/bin/$fixture_tool"
+    chmod 755 "$FIXTURE_ROOT/bin/$fixture_tool"
+  done
 
   printf 'claude-agent-v1\n' > "$FIXTURE_RELEASE/claude/agents/harness-coordinator.md"
   printf 'claude-skill-v1\n' > "$FIXTURE_RELEASE/claude/skills/harness-prep/SKILL.md"
@@ -126,10 +139,30 @@ refresh_codex_fixture_archive() {
 run_fixture_installer() {
   env \
     HOME="$FIXTURE_HOME" \
+    TMPDIR="$FIXTURE_HOME/tmp" \
     PATH="$FIXTURE_ROOT/bin:$PATH" \
     DEEPWIND_INSTALL_TESTING=1 \
     DEEPWIND_RELEASE_DIR="$FIXTURE_RELEASE" \
     bash "$FIXTURE_INSTALLER" --version 1.2.3 "$@"
+}
+
+refresh_claude_fixture_archive() {
+  claude_archive="$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz"
+  tar -C "$FIXTURE_RELEASE/claude" -czf "$claude_archive" agents skills
+  claude_sha=$(test_sha256 "$claude_archive")
+  claude_bytes=$(wc -c < "$claude_archive" | tr -d '[:space:]')
+  claude_files=$(tar -tzf "$claude_archive" \
+    | sed -e 's#^\./##' | jq -Rsc 'split("\n") | map(select(length > 0))')
+  jq \
+    --arg claude_sha "$claude_sha" \
+    --argjson claude_bytes "$claude_bytes" \
+    --argjson claude_files "$claude_files" \
+    '(.archives[] | select(.target == "claude")) |=
+      (.sha256 = $claude_sha | .bytes = $claude_bytes | .files = $claude_files)' \
+    "$FIXTURE_RELEASE/deepwind-release-manifest.json" \
+    > "$FIXTURE_RELEASE/deepwind-release-manifest.json.next"
+  mv "$FIXTURE_RELEASE/deepwind-release-manifest.json.next" \
+    "$FIXTURE_RELEASE/deepwind-release-manifest.json"
 }
 
 remove_fixture_release() {

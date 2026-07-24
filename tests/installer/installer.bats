@@ -105,3 +105,9 @@ teardown() {
   [ ! -e "$FIXTURE_HOME/.claude" ]
   [ ! -e "$FIXTURE_HOME/.codex" ]
 }
+
+@test "release matrix covers transitions rollback boundaries and fixture containment" {
+  run bash "$BATS_TEST_DIRNAME/matrix-contract.sh"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"PASS: installer macOS/Linux release matrix contract"* ]]
+}
