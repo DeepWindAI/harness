@@ -37,6 +37,31 @@ require_job_literal() {
     || fail "$(basename "$file") job $job is missing: $literal"
 }
 
+require_linux_only_actionlint() {
+  local workflow=$1
+  local actionlint_step
+  local actionlint_count
+
+  actionlint_count=$(grep -Fc -- \
+    'uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7' \
+    "$workflow" || true)
+  [ "$actionlint_count" -eq 1 ] \
+    || fail "$(basename -- "$workflow") must contain exactly one actionlint step"
+
+  actionlint_step=$(awk '
+    $0 == "      - name: Validate workflow syntax" { found=1; next }
+    found && /^      - / { exit }
+    found { print }
+  ' "$workflow")
+  printf '%s\n' "$actionlint_step" | grep -Fx \
+    "        if: runner.os == 'Linux'" >/dev/null \
+    || fail "$(basename -- "$workflow") must run actionlint only on Linux"
+  printf '%s\n' "$actionlint_step" | grep -Fx \
+    '        uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7' \
+    >/dev/null \
+    || fail "$(basename -- "$workflow") Linux-only actionlint step is missing"
+}
+
 require_supported_macos_runner() {
   local workflow=$1
 
@@ -51,6 +76,8 @@ require_supported_macos_runner() {
 # matrix entry that way, while running it on the supported macos-15 image.
 require_supported_macos_runner "$WORKFLOW"
 require_supported_macos_runner "$INSTALLER_WORKFLOW"
+require_linux_only_actionlint "$WORKFLOW"
+require_linux_only_actionlint "$INSTALLER_WORKFLOW"
 
 require_literal 'BOOTSTRAP="$ASSETS/deepwind-init-v${VERSION_FROM_TAG}.sh"'
 require_literal 'bash release/build-installer.sh "$BOOTSTRAP"'

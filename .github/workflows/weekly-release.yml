@@ -210,6 +210,10 @@ jobs:
           python-version: '3.11'
 
       - name: Validate workflow syntax
+        # rhysd/actionlint is a container action. Keep it mandatory on the
+        # Linux matrix leg without preventing the macOS portability leg from
+        # running the remaining release checks.
+        if: runner.os == 'Linux'
         uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7
 
       - name: Install fixture test tools
