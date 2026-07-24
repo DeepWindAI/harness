@@ -81,7 +81,7 @@ plan_managed_file() {
       && [ "$current_digest" = "$old_digest" ]; then
       action=replace
     elif [ "$managed_force" -eq 1 ]; then
-      action=replace
+      action=force-replace
     else
       action=preserve
     fi
@@ -185,5 +185,6 @@ check_plan() {
       *) drift=1; printf 'drift: %s (%s)\n' "$destination" "$action" ;;
     esac
   done < "$PLAN_FILE"
+  check_recovery_backups || drift=1
   return "$drift"
 }

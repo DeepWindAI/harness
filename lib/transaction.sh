@@ -57,6 +57,7 @@ rollback_transaction() {
 install_one_file() {
   source_path=$1
   destination=$2
+  retain_forced_backup=${3:-0}
   backup_path=
   had_existing=0
   assert_contained_path "$destination"
@@ -65,6 +66,13 @@ install_one_file() {
     had_existing=1
     backup_path="$BACKUP_DIR/backup-$MUTATION_COUNT"
     cp -p "$destination" "$backup_path" || die "cannot back up managed file"
+    if [ "$retain_forced_backup" -eq 1 ]; then
+      recovery_destination_allowed "$destination" \
+        || die "forced replacement is not an allowlisted recovery destination"
+      backup_digest=$(sha256_file "$backup_path")
+      printf '%s\t%s\t%s\n' "$backup_digest" "$backup_path" "$destination" \
+        >> "$PENDING_FORCE_BACKUPS"
+    fi
   fi
   printf 'F\t%s\t%s\t%s\n' "$destination" "$backup_path" "$had_existing" >> "$JOURNAL_FILE"
   adjacent="$destination.deepwind-new.$$"
@@ -72,6 +80,7 @@ install_one_file() {
   cp "$source_path" "$adjacent" || die "cannot stage destination file"
   case "$destination" in
     "$BIN_DIR"/*|"$CLAUDE_DIR/hooks/"*) chmod 755 "$adjacent" ;;
+    "$RECOVERY_ROOT"/*|"$RECOVERY_STATE_FILE") chmod 600 "$adjacent" ;;
     *) chmod 644 "$adjacent" ;;
   esac
   mv -f "$adjacent" "$destination" || die "cannot atomically replace destination"
@@ -80,6 +89,36 @@ install_one_file() {
     && [ "${DEEPWIND_TEST_INTERRUPT_AFTER_MUTATIONS:-}" = "$MUTATION_COUNT" ]; then
     kill -TERM "$$"
   fi
+}
+
+persist_forced_backups() {
+  [ -s "$PENDING_FORCE_BACKUPS" ] || return 0
+  recovery_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  recovery_run="$RECOVERY_ROOT/$recovery_stamp-$$"
+  assert_contained_path "$recovery_run"
+  [ ! -e "$recovery_run" ] || die "recovery run path already exists"
+
+  recovery_next="$WORK_DIR/recovery.next"
+  if [ -f "$RECOVERY_STATE_FILE" ]; then
+    cp "$RECOVERY_STATE_FILE" "$recovery_next" \
+      || die "cannot stage recovery state"
+  else
+    : > "$recovery_next"
+  fi
+
+  recovery_index=0
+  while IFS='	' read -r recovery_digest rollback_backup recovery_destination; do
+    recovery_index=$((recovery_index + 1))
+    retained_backup="$recovery_run/backup-$recovery_index"
+    install_one_file "$rollback_backup" "$retained_backup" 0
+    [ "$(sha256_file "$retained_backup")" = "$recovery_digest" ] \
+      || die "retained recovery backup digest mismatch"
+    printf '%s\t%s\t%s\t%s\n' \
+      "$recovery_run" "$recovery_digest" "$retained_backup" "$recovery_destination" \
+      >> "$recovery_next"
+  done < "$PENDING_FORCE_BACKUPS"
+
+  install_one_file "$recovery_next" "$RECOVERY_STATE_FILE" 0
 }
 
 build_next_state() {
@@ -110,10 +149,14 @@ build_next_state() {
 
 apply_transaction() {
   acquire_lock
+  recovery_state_summary \
+    || die "retained recovery state requires attention before installation"
   JOURNAL_FILE="$WORK_DIR/journal.tsv"
   BACKUP_DIR="$WORK_DIR/backups"
   mkdir "$BACKUP_DIR"
   : > "$JOURNAL_FILE"
+  PENDING_FORCE_BACKUPS="$WORK_DIR/forced-backups.tsv"
+  : > "$PENDING_FORCE_BACKUPS"
   MUTATION_COUNT=0
   last_target=
 
@@ -126,7 +169,8 @@ apply_transaction() {
       fi
     fi
     case "$action" in
-      install|replace) install_one_file "$source_path" "$destination" ;;
+      install|replace) install_one_file "$source_path" "$destination" 0 ;;
+      force-replace) install_one_file "$source_path" "$destination" 1 ;;
       preserve) warn "preserving locally modified file: $destination" ;;
       unchanged) ;;
       *) die "invalid install action: $action" ;;
@@ -135,7 +179,8 @@ apply_transaction() {
 
   next_state="$WORK_DIR/state.next"
   build_next_state "$next_state"
-  install_one_file "$next_state" "$STATE_FILE"
+  install_one_file "$next_state" "$STATE_FILE" 0
+  persist_forced_backups
   TRANSACTION_COMMITTED=1
   release_lock
 }
