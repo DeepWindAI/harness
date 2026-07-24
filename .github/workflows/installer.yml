@@ -33,7 +33,7 @@ jobs:
           - name: ubuntu-gnu-bash
             os: ubuntu-22.04
           - name: macos-bash-3-2
-            os: macos-13
+            os: macos-15
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5

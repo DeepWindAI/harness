@@ -6,6 +6,7 @@ IFS=$'\n\t'
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 WORKFLOW="$ROOT/.github/workflows/weekly-release.yml"
+INSTALLER_WORKFLOW="$ROOT/.github/workflows/installer.yml"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/deepwind-workflow-test.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
@@ -13,6 +14,21 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 require_literal() {
   grep -F -- "$1" "$WORKFLOW" >/dev/null || fail "workflow is missing: $1"
 }
+
+require_supported_macos_runner() {
+  local workflow=$1
+
+  grep -F -- 'os: macos-15' "$workflow" >/dev/null \
+    || fail "$(basename -- "$workflow") must use macos-15"
+  if grep -F -- 'macos-13' "$workflow" >/dev/null; then
+    fail "$(basename -- "$workflow") must not use retired macos-13"
+  fi
+}
+
+# GitHub retired macos-13. Keep testing Bash 3.2 semantics by naming the
+# matrix entry that way, while running it on the supported macos-15 image.
+require_supported_macos_runner "$WORKFLOW"
+require_supported_macos_runner "$INSTALLER_WORKFLOW"
 
 require_literal 'BOOTSTRAP="$ASSETS/deepwind-init-v${VERSION_FROM_TAG}.sh"'
 require_literal 'bash release/build-installer.sh "$BOOTSTRAP"'
