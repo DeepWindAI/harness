@@ -26,6 +26,18 @@ validate_schema() {
     ajv validate --spec=draft2020 -c ajv-formats \
     -s "$ROOT/release/manifest.schema.json" -d "$1"
 }
+create_traversal_archive() {
+  # GNU tar interprets BSD tar's -s substitution flag as --same-order, which
+  # is invalid while creating an archive. Use each implementation's native
+  # pathname transform so this security fixture runs on both CI platforms.
+  if tar --version 2>&1 | grep -q 'GNU tar'; then
+    tar -C "$TMP" --transform='s|^bad-file$|../escape|' \
+      -czf "$TMP/traversal.tar.gz" bad-file
+  else
+    tar -C "$TMP" -s ',^bad-file$,../escape,' \
+      -czf "$TMP/traversal.tar.gz" bad-file
+  fi
+}
 
 mkdir -p "$TMP/claude/agents" "$TMP/codex/plugins"
 printf 'claude role\n' > "$TMP/claude/agents/coordinator.md"
@@ -82,7 +94,7 @@ expect_fail validate_schema "$TMP/schema-invalid-date.json"
 
 mkdir -p "$TMP/bad/../escape" 2>/dev/null || true
 printf 'bad\n' > "$TMP/bad-file"
-tar -C "$TMP" -s ',bad-file,../escape,' -czf "$TMP/traversal.tar.gz" bad-file
+create_traversal_archive
 mkdir -p "$TMP/duplicate"
 tar -C "$TMP/claude" -czf "$TMP/duplicate/deepwind-harness-claude-v1.2.3.tar.gz" agents/coordinator.md agents/coordinator.md
 expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind-staging \

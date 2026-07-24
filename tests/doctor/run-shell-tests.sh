@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# The fake Codex executable is assembled from literal shell source lines.
+# shellcheck disable=SC2016
 set -euo pipefail
 IFS=$'\n\t'
 

@@ -5,8 +5,22 @@ on:
     paths:
       - 'deepwind-init.sh'
       - 'lib/**'
+      - 'agents/**'
+      - 'skills/**'
+      - 'frameworks/**'
+      - 'payload/**'
+      - '.agents/**'
+      - 'plugins/**'
+      - 'codex/**'
+      - 'config/channels/**'
       - 'release/**'
       - 'tests/installer/**'
+      - 'tests/plugin/**'
+      - 'tests/doctor/**'
+      - 'tests/docs/**'
+      - 'tests/validate_codex_toml.py'
+      - 'docs/**'
+      - 'README.md'
       - '.github/workflows/installer.yml'
       - '.github/workflows/weekly-release.yml'
   push:
@@ -14,8 +28,22 @@ on:
     paths:
       - 'deepwind-init.sh'
       - 'lib/**'
+      - 'agents/**'
+      - 'skills/**'
+      - 'frameworks/**'
+      - 'payload/**'
+      - '.agents/**'
+      - 'plugins/**'
+      - 'codex/**'
+      - 'config/channels/**'
       - 'release/**'
       - 'tests/installer/**'
+      - 'tests/plugin/**'
+      - 'tests/doctor/**'
+      - 'tests/docs/**'
+      - 'tests/validate_codex_toml.py'
+      - 'docs/**'
+      - 'README.md'
       - '.github/workflows/installer.yml'
       - '.github/workflows/weekly-release.yml'
   workflow_dispatch:
@@ -26,6 +54,8 @@ permissions:
 jobs:
   installer-matrix:
     name: ${{ matrix.name }}
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -36,10 +66,12 @@ jobs:
             os: macos-13
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
 
       - name: Validate workflow syntax
-        uses: rhysd/actionlint@v1.7.7
+        uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7
 
       - name: Install test tools
         shell: bash
@@ -73,6 +105,19 @@ jobs:
         shell: bash
         run: bats tests/installer
 
+      - name: Validate Codex distribution and onboarding contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/plugin/test-codex-plugin.sh
+          bash tests/plugin/assert-child-mcp-policy.sh
+          bash tests/plugin/test-codex-plugin-lifecycle.sh
+          bash tests/doctor/run-shell-tests.sh
+          bash tests/docs/test-installation-docs.sh
+
       - name: Run ShellCheck
         shell: bash
-        run: shellcheck deepwind-init.sh lib/*.sh release/*.sh tests/installer/*.sh tests/installer/*.bash
+        run: |
+          shellcheck deepwind-init.sh lib/*.sh release/*.sh \
+            tests/installer/*.sh tests/installer/*.bash \
+            tests/plugin/*.sh tests/doctor/*.sh tests/docs/*.sh

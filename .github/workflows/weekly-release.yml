@@ -40,7 +40,7 @@ on:
     tags: [ 'v*' ]
 
 permissions:
-  contents: write   # commit VERSION bump, push tag, create Release
+  contents: read
 
 jobs:
   bump-and-release:
@@ -48,12 +48,14 @@ jobs:
     # build-and-release below.
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       new_version: ${{ steps.bump.outputs.new_version }}
       tag: ${{ steps.bump.outputs.tag }}
     steps:
       - name: Checkout main
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: main
           fetch-depth: 0
@@ -69,7 +71,7 @@ jobs:
           INPUT_BUMP: ${{ github.event.inputs.bump || 'patch' }}
         run: |
           set -euo pipefail
-          OLD=$(cat VERSION | tr -d '[:space:]')
+          OLD=$(tr -d '[:space:]' < VERSION)
 
           # Belt-and-suspenders: workflow_dispatch's choice type already
           # restricts INPUT_BUMP to {patch, minor, major}, but validate anyway.
@@ -110,6 +112,8 @@ jobs:
         (needs.bump-and-release.result == 'success' && needs.bump-and-release.outputs.tag != '')
       )
     name: installer matrix (${{ matrix.name }})
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
@@ -120,12 +124,13 @@ jobs:
             os: macos-13
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ github.event_name == 'push' && github.ref || 'main' }}
+          persist-credentials: false
 
       - name: Validate workflow syntax
-        uses: rhysd/actionlint@v1.7.7
+        uses: rhysd/actionlint@03d0035246f3e81f36aed592ffb4bebf33a03106 # v1.7.7
 
       - name: Install fixture test tools
         shell: bash
@@ -156,17 +161,27 @@ jobs:
           bash release/test-workflow-contract.sh
           bash tests/installer/matrix-contract.sh
           bats tests/installer
-          shellcheck deepwind-init.sh lib/*.sh release/*.sh tests/installer/*.sh tests/installer/*.bash
+          bash tests/plugin/test-codex-plugin.sh
+          bash tests/plugin/assert-child-mcp-policy.sh
+          bash tests/plugin/test-codex-plugin-lifecycle.sh
+          bash tests/doctor/run-shell-tests.sh
+          bash tests/docs/test-installation-docs.sh
+          shellcheck deepwind-init.sh lib/*.sh release/*.sh \
+            tests/installer/*.sh tests/installer/*.bash \
+            tests/plugin/*.sh tests/doctor/*.sh tests/docs/*.sh
 
   build-and-release:
     needs: [ bump-and-release, installer-matrix ]
     if: |
-      always() && (
+      always() &&
+      needs.installer-matrix.result == 'success' &&
+      (
         github.event_name == 'push' ||
-        needs.installer-matrix.result == 'success' &&
         (needs.bump-and-release.result == 'success' && needs.bump-and-release.outputs.tag != '')
       )
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Resolve tag
         id: tag
@@ -191,7 +206,7 @@ jobs:
           echo "  building release for $TAG"
 
       - name: Checkout tag
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           ref: ${{ steps.tag.outputs.tag }}
           fetch-depth: 0  # need main history for the optional VERSION-sync below
@@ -212,7 +227,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION_FROM_TAG="${TAG#v}"
-          CURRENT=$(cat VERSION | tr -d '[:space:]' 2>/dev/null || echo "")
+          CURRENT=$(tr -d '[:space:]' < VERSION)
           if [ "$CURRENT" != "$VERSION_FROM_TAG" ]; then
             echo "  syncing VERSION: $CURRENT → $VERSION_FROM_TAG (from tag $TAG)"
             echo "$VERSION_FROM_TAG" > VERSION
@@ -234,7 +249,7 @@ jobs:
           VERSION_FROM_TAG="${TAG#v}"
           git fetch origin main --quiet
           git checkout origin/main -- VERSION 2>/dev/null || true
-          MAIN_CURRENT=$(cat VERSION | tr -d '[:space:]' 2>/dev/null || echo "")
+          MAIN_CURRENT=$(tr -d '[:space:]' < VERSION)
           if [ "$MAIN_CURRENT" = "$VERSION_FROM_TAG" ]; then
             echo "  main's VERSION already matches; no sync needed"
             # restore the tag's tree before the build step reads it

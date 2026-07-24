@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# This test searches documentation for a literal user-facing ~/ path.
+# shellcheck disable=SC2088
 set -euo pipefail
 IFS=$'\n\t'
 

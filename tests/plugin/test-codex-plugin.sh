@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Test fixtures intentionally preserve literal $HOME and ~/ path patterns.
+# shellcheck disable=SC2016,SC2088
 set -euo pipefail
 IFS=$'\n\t'
 
