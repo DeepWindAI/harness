@@ -58,5 +58,18 @@ doctor() {
       printf '%s\n' '{"target":"unknown","component":"mcp","status":"not-applicable"}'
       ;;
   esac
+  if command -v recovery_state_summary >/dev/null 2>&1 \
+    && [ -n "${RECOVERY_STATE_FILE:-}" ]; then
+    if recovery_state_summary; then
+      printf '{"target":"installer","component":"recovery","status":"%s","count":%s}\n' \
+        "$RECOVERY_STATUS" "$RECOVERY_COUNT"
+    else
+      printf '%s\n' \
+        '{"target":"installer","component":"recovery","status":"attention-required","count":0}'
+    fi
+  else
+    printf '%s\n' \
+      '{"target":"installer","component":"recovery","status":"unavailable","count":0}'
+  fi
   return 0
 }

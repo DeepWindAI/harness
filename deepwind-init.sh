@@ -38,6 +38,8 @@ configure_paths() {
   BIN_DIR="$HOME/.deepwind/bin"
   LOCK_DIR="$HOME/.deepwind-install.lock"
   STATE_FILE="$INSTALL_DIR/state.tsv"
+  RECOVERY_ROOT="$INSTALL_DIR/recovery"
+  RECOVERY_STATE_FILE="$INSTALL_DIR/recovery.tsv"
 }
 
 assert_safe_home() {
@@ -102,6 +104,107 @@ previous_digest() {
   state_path=$1
   [ -f "$STATE_FILE" ] || return 1
   awk -F '	' -v wanted="$state_path" '$2 == wanted { print $1; found=1; exit } END { if (!found) exit 1 }' "$STATE_FILE"
+}
+
+private_mode() {
+  if stat -f '%Lp' "$1" >/dev/null 2>&1; then
+    stat -f '%Lp' "$1"
+  else
+    stat -c '%a' "$1"
+  fi
+}
+
+recovery_destination_allowed() {
+  recovery_destination=$1
+  case "$recovery_destination" in
+    "$CLAUDE_DIR"/agents/*|\
+    "$CLAUDE_DIR"/skills/*|\
+    "$CLAUDE_DIR"/hooks/*|\
+    "$CODEX_DIR"/agents/*|\
+    "$FRAMEWORKS_DIR"/*|\
+    "$BIN_DIR"/*|\
+    "$INSTALL_DIR"/share/*)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+# Set RECOVERY_STATUS and RECOVERY_COUNT without printing retained paths. The
+# state deliberately covers only installer-managed payloads, never Codex auth,
+# MCP token caches, or other user configuration.
+recovery_state_summary() {
+  RECOVERY_STATUS=none
+  RECOVERY_COUNT=0
+  if [ ! -e "$RECOVERY_STATE_FILE" ]; then
+    if [ -d "$RECOVERY_ROOT" ] \
+      && [ -n "$(find "$RECOVERY_ROOT" -mindepth 1 -print -quit 2>/dev/null)" ]; then
+      RECOVERY_STATUS=attention-required
+      return 1
+    fi
+    return 0
+  fi
+
+  [ -f "$RECOVERY_STATE_FILE" ] \
+    && [ ! -L "$RECOVERY_STATE_FILE" ] \
+    && [ "$(private_mode "$RECOVERY_STATE_FILE")" = 600 ] \
+    && [ -d "$RECOVERY_ROOT" ] \
+    && [ ! -L "$RECOVERY_ROOT" ] \
+    && [ "$(private_mode "$RECOVERY_ROOT")" = 700 ] || {
+      RECOVERY_STATUS=attention-required
+      return 1
+    }
+
+  recovery_valid=1
+  recovery_records=0
+  while IFS='	' read -r recovery_run recovery_digest recovery_backup recovery_destination recovery_extra; do
+    recovery_records=$((recovery_records + 1))
+    [ -z "$recovery_extra" ] || recovery_valid=0
+    printf '%s\n' "${recovery_run##*/}" \
+      | grep -Eq '^[0-9]{8}T[0-9]{6}Z-[0-9]+$' \
+      || recovery_valid=0
+    case "$recovery_run" in "$RECOVERY_ROOT"/*) ;; *) recovery_valid=0 ;; esac
+    [ "${recovery_backup%/*}" = "$recovery_run" ] || recovery_valid=0
+    printf '%s\n' "${recovery_backup##*/}" \
+      | grep -Eq '^backup-[1-9][0-9]*$' \
+      || recovery_valid=0
+    case "$recovery_digest" in *[!a-f0-9]*|'') recovery_valid=0 ;; esac
+    [ "${#recovery_digest}" -eq 64 ] || recovery_valid=0
+    recovery_destination_allowed "$recovery_destination" || recovery_valid=0
+    [ -d "$recovery_run" ] \
+      && [ ! -L "$recovery_run" ] \
+      && [ "$(private_mode "$recovery_run")" = 700 ] \
+      && [ -f "$recovery_backup" ] \
+      && [ ! -L "$recovery_backup" ] \
+      && [ "$(private_mode "$recovery_backup")" = 600 ] \
+      && [ "$(sha256_file "$recovery_backup")" = "$recovery_digest" ] \
+      || recovery_valid=0
+  done < "$RECOVERY_STATE_FILE"
+
+  recovery_files=$(find "$RECOVERY_ROOT" -type f 2>/dev/null | wc -l | tr -d '[:space:]')
+  [ "$recovery_records" -gt 0 ] \
+    && [ "$recovery_files" = "$recovery_records" ] \
+    && [ "$recovery_valid" -eq 1 ] || {
+      RECOVERY_STATUS=attention-required
+      return 1
+    }
+  RECOVERY_STATUS=available
+  RECOVERY_COUNT=$recovery_records
+  return 0
+}
+
+check_recovery_backups() {
+  if recovery_state_summary; then
+    case "$RECOVERY_STATUS" in
+      none) printf '%s\n' 'recovery: none retained' ;;
+      available) printf 'recovery: %s retained forced-replacement backup(s)\n' "$RECOVERY_COUNT" ;;
+    esac
+    return 0
+  fi
+  printf '%s\n' 'recovery: attention-required'
+  return 1
 }
 
 # ---- lib/args.sh ----
@@ -453,7 +556,7 @@ plan_managed_file() {
       && [ "$current_digest" = "$old_digest" ]; then
       action=replace
     elif [ "$managed_force" -eq 1 ]; then
-      action=replace
+      action=force-replace
     else
       action=preserve
     fi
@@ -557,6 +660,7 @@ check_plan() {
       *) drift=1; printf 'drift: %s (%s)\n' "$destination" "$action" ;;
     esac
   done < "$PLAN_FILE"
+  check_recovery_backups || drift=1
   return "$drift"
 }
 
@@ -620,6 +724,7 @@ rollback_transaction() {
 install_one_file() {
   source_path=$1
   destination=$2
+  retain_forced_backup=${3:-0}
   backup_path=
   had_existing=0
   assert_contained_path "$destination"
@@ -628,6 +733,13 @@ install_one_file() {
     had_existing=1
     backup_path="$BACKUP_DIR/backup-$MUTATION_COUNT"
     cp -p "$destination" "$backup_path" || die "cannot back up managed file"
+    if [ "$retain_forced_backup" -eq 1 ]; then
+      recovery_destination_allowed "$destination" \
+        || die "forced replacement is not an allowlisted recovery destination"
+      backup_digest=$(sha256_file "$backup_path")
+      printf '%s\t%s\t%s\n' "$backup_digest" "$backup_path" "$destination" \
+        >> "$PENDING_FORCE_BACKUPS"
+    fi
   fi
   printf 'F\t%s\t%s\t%s\n' "$destination" "$backup_path" "$had_existing" >> "$JOURNAL_FILE"
   adjacent="$destination.deepwind-new.$$"
@@ -635,6 +747,7 @@ install_one_file() {
   cp "$source_path" "$adjacent" || die "cannot stage destination file"
   case "$destination" in
     "$BIN_DIR"/*|"$CLAUDE_DIR/hooks/"*) chmod 755 "$adjacent" ;;
+    "$RECOVERY_ROOT"/*|"$RECOVERY_STATE_FILE") chmod 600 "$adjacent" ;;
     *) chmod 644 "$adjacent" ;;
   esac
   mv -f "$adjacent" "$destination" || die "cannot atomically replace destination"
@@ -643,6 +756,36 @@ install_one_file() {
     && [ "${DEEPWIND_TEST_INTERRUPT_AFTER_MUTATIONS:-}" = "$MUTATION_COUNT" ]; then
     kill -TERM "$$"
   fi
+}
+
+persist_forced_backups() {
+  [ -s "$PENDING_FORCE_BACKUPS" ] || return 0
+  recovery_stamp=$(date -u +%Y%m%dT%H%M%SZ)
+  recovery_run="$RECOVERY_ROOT/$recovery_stamp-$$"
+  assert_contained_path "$recovery_run"
+  [ ! -e "$recovery_run" ] || die "recovery run path already exists"
+
+  recovery_next="$WORK_DIR/recovery.next"
+  if [ -f "$RECOVERY_STATE_FILE" ]; then
+    cp "$RECOVERY_STATE_FILE" "$recovery_next" \
+      || die "cannot stage recovery state"
+  else
+    : > "$recovery_next"
+  fi
+
+  recovery_index=0
+  while IFS='	' read -r recovery_digest rollback_backup recovery_destination; do
+    recovery_index=$((recovery_index + 1))
+    retained_backup="$recovery_run/backup-$recovery_index"
+    install_one_file "$rollback_backup" "$retained_backup" 0
+    [ "$(sha256_file "$retained_backup")" = "$recovery_digest" ] \
+      || die "retained recovery backup digest mismatch"
+    printf '%s\t%s\t%s\t%s\n' \
+      "$recovery_run" "$recovery_digest" "$retained_backup" "$recovery_destination" \
+      >> "$recovery_next"
+  done < "$PENDING_FORCE_BACKUPS"
+
+  install_one_file "$recovery_next" "$RECOVERY_STATE_FILE" 0
 }
 
 build_next_state() {
@@ -673,10 +816,14 @@ build_next_state() {
 
 apply_transaction() {
   acquire_lock
+  recovery_state_summary \
+    || die "retained recovery state requires attention before installation"
   JOURNAL_FILE="$WORK_DIR/journal.tsv"
   BACKUP_DIR="$WORK_DIR/backups"
   mkdir "$BACKUP_DIR"
   : > "$JOURNAL_FILE"
+  PENDING_FORCE_BACKUPS="$WORK_DIR/forced-backups.tsv"
+  : > "$PENDING_FORCE_BACKUPS"
   MUTATION_COUNT=0
   last_target=
 
@@ -689,7 +836,8 @@ apply_transaction() {
       fi
     fi
     case "$action" in
-      install|replace) install_one_file "$source_path" "$destination" ;;
+      install|replace) install_one_file "$source_path" "$destination" 0 ;;
+      force-replace) install_one_file "$source_path" "$destination" 1 ;;
       preserve) warn "preserving locally modified file: $destination" ;;
       unchanged) ;;
       *) die "invalid install action: $action" ;;
@@ -698,7 +846,8 @@ apply_transaction() {
 
   next_state="$WORK_DIR/state.next"
   build_next_state "$next_state"
-  install_one_file "$next_state" "$STATE_FILE"
+  install_one_file "$next_state" "$STATE_FILE" 0
+  persist_forced_backups
   TRANSACTION_COMMITTED=1
   release_lock
 }
@@ -857,6 +1006,19 @@ doctor() {
       printf '%s\n' '{"target":"unknown","component":"mcp","status":"not-applicable"}'
       ;;
   esac
+  if command -v recovery_state_summary >/dev/null 2>&1 \
+    && [ -n "${RECOVERY_STATE_FILE:-}" ]; then
+    if recovery_state_summary; then
+      printf '{"target":"installer","component":"recovery","status":"%s","count":%s}\n' \
+        "$RECOVERY_STATUS" "$RECOVERY_COUNT"
+    else
+      printf '%s\n' \
+        '{"target":"installer","component":"recovery","status":"attention-required","count":0}'
+    fi
+  else
+    printf '%s\n' \
+      '{"target":"installer","component":"recovery","status":"unavailable","count":0}'
+  fi
   return 0
 }
 
