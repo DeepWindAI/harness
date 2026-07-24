@@ -128,7 +128,15 @@ jobs:
       contents: read
     outputs:
       tag: ${{ steps.release-ref.outputs.tag }}
+      commit_sha: ${{ steps.release-ref.outputs.commit_sha }}
     steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: main
+          fetch-depth: 1
+          persist-credentials: false
+
       - name: Resolve immutable release tag
         id: release-ref
         env:
@@ -146,8 +154,24 @@ jobs:
             echo "invalid tag format: '$TAG'" >&2
             exit 2
           fi
+
+          # Fetch only the exact trust root and candidate tag. Peeling ^{commit}
+          # normalizes both annotated and lightweight tags to one immutable
+          # commit that every downstream job must use.
+          TRUSTED_MAIN_REF=refs/remotes/origin/main
+          git fetch --force --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/tags/${TAG}:refs/tags/${TAG}"
+          CANDIDATE_COMMIT=$(git rev-parse --verify "refs/tags/${TAG}^{commit}")
+          TRUSTED_MAIN_COMMIT=$(git rev-parse --verify "${TRUSTED_MAIN_REF}^{commit}")
+          if ! git merge-base --is-ancestor "$CANDIDATE_COMMIT" "$TRUSTED_MAIN_REF"; then
+            echo "tag $TAG peels to $CANDIDATE_COMMIT, which is not reachable from trusted main $TRUSTED_MAIN_COMMIT" >&2
+            exit 2
+          fi
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "  release ref: $TAG"
+          echo "commit_sha=$CANDIDATE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "  release ref: $TAG ($CANDIDATE_COMMIT)"
 
   installer-matrix:
     needs: [ bump-and-release, resolve-release-ref ]
@@ -170,8 +194,16 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ needs.resolve-release-ref.outputs.tag }}
+          ref: ${{ needs.resolve-release-ref.outputs.commit_sha }}
           persist-credentials: false
+
+      - name: Verify exact tested commit
+        shell: bash
+        env:
+          EXPECTED_COMMIT_SHA: ${{ needs.resolve-release-ref.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT_SHA"
 
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
@@ -232,13 +264,38 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout tag
+      - name: Checkout tested commit
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          ref: ${{ needs.resolve-release-ref.outputs.tag }}
+          ref: ${{ needs.resolve-release-ref.outputs.commit_sha }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: false
+
+      - name: Revalidate trusted release commit
+        env:
+          TAG: ${{ needs.resolve-release-ref.outputs.tag }}
+          EXPECTED_COMMIT_SHA: ${{ needs.resolve-release-ref.outputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          TRUSTED_MAIN_REF=refs/remotes/origin/main
+          git fetch --force --no-tags origin \
+            "+refs/heads/main:refs/remotes/origin/main" \
+            "+refs/tags/${TAG}:refs/tags/${TAG}"
+          CURRENT_TAG_COMMIT=$(git rev-parse --verify "refs/tags/${TAG}^{commit}")
+          TRUSTED_MAIN_COMMIT=$(git rev-parse --verify "${TRUSTED_MAIN_REF}^{commit}")
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT_SHA" || {
+            echo "checked-out release tree differs from tested commit $EXPECTED_COMMIT_SHA" >&2
+            exit 2
+          }
+          test "$CURRENT_TAG_COMMIT" = "$EXPECTED_COMMIT_SHA" || {
+            echo "tag $TAG moved from tested commit $EXPECTED_COMMIT_SHA to $CURRENT_TAG_COMMIT" >&2
+            exit 2
+          }
+          if ! git merge-base --is-ancestor "$EXPECTED_COMMIT_SHA" "$TRUSTED_MAIN_REF"; then
+            echo "tested commit $EXPECTED_COMMIT_SHA is not reachable from trusted main $TRUSTED_MAIN_COMMIT" >&2
+            exit 2
+          fi
 
       - name: Verify immutable tag version
         env:

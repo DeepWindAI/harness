@@ -50,16 +50,38 @@ require_literal '--prerelease --latest=false'
 # exact shared ref, never a moving main branch.
 require_job_literal "$WORKFLOW" resolve-release-ref 'needs: [ bump-and-release ]'
 require_job_literal "$WORKFLOW" resolve-release-ref 'tag: ${{ steps.release-ref.outputs.tag }}'
+require_job_literal "$WORKFLOW" resolve-release-ref \
+  'commit_sha: ${{ steps.release-ref.outputs.commit_sha }}'
+require_job_literal "$WORKFLOW" resolve-release-ref \
+  'git fetch --force --no-tags origin'
+require_job_literal "$WORKFLOW" resolve-release-ref \
+  '"+refs/heads/main:refs/remotes/origin/main"'
+require_job_literal "$WORKFLOW" resolve-release-ref \
+  'CANDIDATE_COMMIT=$(git rev-parse --verify "refs/tags/${TAG}^{commit}")'
+require_job_literal "$WORKFLOW" resolve-release-ref \
+  'git merge-base --is-ancestor "$CANDIDATE_COMMIT" "$TRUSTED_MAIN_REF"'
+require_job_literal "$WORKFLOW" resolve-release-ref \
+  'echo "commit_sha=$CANDIDATE_COMMIT" >> "$GITHUB_OUTPUT"'
 require_job_literal "$WORKFLOW" installer-matrix \
   'needs: [ bump-and-release, resolve-release-ref ]'
 require_job_literal "$WORKFLOW" installer-matrix \
-  'ref: ${{ needs.resolve-release-ref.outputs.tag }}'
+  'ref: ${{ needs.resolve-release-ref.outputs.commit_sha }}'
+require_job_literal "$WORKFLOW" installer-matrix \
+  'test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT_SHA"'
 require_job_literal "$WORKFLOW" build-and-release \
   'needs: [ bump-and-release, resolve-release-ref, installer-matrix ]'
 require_job_literal "$WORKFLOW" build-and-release \
-  'ref: ${{ needs.resolve-release-ref.outputs.tag }}'
+  'ref: ${{ needs.resolve-release-ref.outputs.commit_sha }}'
 require_job_literal "$WORKFLOW" build-and-release 'persist-credentials: false'
 require_job_literal "$WORKFLOW" build-and-release "needs.installer-matrix.result == 'success' &&"
+require_job_literal "$WORKFLOW" build-and-release \
+  'EXPECTED_COMMIT_SHA: ${{ needs.resolve-release-ref.outputs.commit_sha }}'
+require_job_literal "$WORKFLOW" build-and-release \
+  'CURRENT_TAG_COMMIT=$(git rev-parse --verify "refs/tags/${TAG}^{commit}")'
+require_job_literal "$WORKFLOW" build-and-release \
+  'test "$CURRENT_TAG_COMMIT" = "$EXPECTED_COMMIT_SHA"'
+require_job_literal "$WORKFLOW" build-and-release \
+  'git merge-base --is-ancestor "$EXPECTED_COMMIT_SHA" "$TRUSTED_MAIN_REF"'
 matrix_guard_line=$(job_block "$WORKFLOW" build-and-release \
   | grep -nF "needs.installer-matrix.result == 'success' &&" | cut -d: -f1)
 release_ref_line=$(job_block "$WORKFLOW" build-and-release \
@@ -70,6 +92,14 @@ if [ -z "$matrix_guard_line" ] || [ -z "$release_ref_line" ] \
 fi
 if job_block "$WORKFLOW" installer-matrix | grep -F "ref: main" >/dev/null; then
   fail 'release matrix tests moving main instead of the immutable release tag'
+fi
+if job_block "$WORKFLOW" installer-matrix \
+  | grep -F 'ref: ${{ needs.resolve-release-ref.outputs.tag }}' >/dev/null; then
+  fail 'release matrix checks out a mutable tag name instead of the peeled commit'
+fi
+if job_block "$WORKFLOW" build-and-release \
+  | grep -F 'ref: ${{ needs.resolve-release-ref.outputs.tag }}' >/dev/null; then
+  fail 'release signer checks out a mutable tag name instead of the peeled commit'
 fi
 if job_block "$WORKFLOW" build-and-release \
   | grep -F 'echo "$VERSION_FROM_TAG" > VERSION' >/dev/null; then
@@ -85,6 +115,26 @@ require_job_literal "$WORKFLOW" bump-and-release \
   'git add plugins/deepwind-harness/.codex-plugin/plugin.json'
 require_job_literal "$WORKFLOW" build-and-release \
   "test \"\$(jq -r '.version' \"\$PLUGIN_MANIFEST\")\" = \"\$VERSION_FROM_TAG\""
+
+# The signer must re-fetch the trusted branch and tag, then prove that the tag
+# still peels to the already-tested commit before a step receives signing
+# secrets or executes repository-controlled release scripts.
+trust_check_line=$(job_block "$WORKFLOW" build-and-release \
+  | grep -nF 'CURRENT_TAG_COMMIT=$(git rev-parse --verify "refs/tags/${TAG}^{commit}")' \
+  | cut -d: -f1)
+secret_line=$(job_block "$WORKFLOW" build-and-release \
+  | grep -nF 'RELEASE_GPG_PRIVATE_KEY: ${{ secrets.DEEPWIND_RELEASE_GPG_PRIVATE_KEY }}' \
+  | cut -d: -f1)
+release_script_line=$(job_block "$WORKFLOW" build-and-release \
+  | grep -nF 'bash release/build-installer.sh "$BOOTSTRAP"' \
+  | cut -d: -f1)
+if [ -z "$trust_check_line" ] || [ -z "$secret_line" ] \
+  || [ "$trust_check_line" -ge "$secret_line" ]; then
+  fail 'signing secret is available before tag trust is revalidated'
+fi
+if [ -z "$release_script_line" ] || [ "$trust_check_line" -ge "$release_script_line" ]; then
+  fail 'tag-controlled release script runs before tag trust is revalidated'
+fi
 
 # Least privilege belongs at job scope. Test-only matrix jobs never retain a
 # credential helper, while only bump/release jobs receive contents:write.
@@ -153,7 +203,7 @@ for path_filter in \
   "- 'tests/plugin/**'" \
   "- 'tests/doctor/**'" \
   "- 'tests/docs/**'"; do
-  occurrences=$(grep -F -- "$path_filter" "$INSTALLER_WORKFLOW" | wc -l | tr -d '[:space:]')
+  occurrences=$(grep -Fc -- "$path_filter" "$INSTALLER_WORKFLOW" || true)
   [ "$occurrences" -eq 2 ] \
     || fail "installer.yml must cover $path_filter for both PR and main push"
 done
