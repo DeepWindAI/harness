@@ -79,10 +79,12 @@ EOF
     | sed -e 's#^\./##' | jq -Rsc 'split("\n") | map(select(length > 0))')
   codex_files=$(tar -tzf "$FIXTURE_RELEASE/deepwind-harness-codex-v1.2.3.tar.gz" \
     | sed -e 's#^\./##' | jq -Rsc 'split("\n") | map(select(length > 0))')
+  bootstrap_sha=$(test_sha256 "$FIXTURE_INSTALLER")
+  bootstrap_bytes=$(wc -c < "$FIXTURE_INSTALLER" | tr -d '[:space:]')
 
   jq -nS \
-    --arg claude_sha "$claude_sha" --arg codex_sha "$codex_sha" \
-    --argjson claude_bytes "$claude_bytes" --argjson codex_bytes "$codex_bytes" \
+    --arg claude_sha "$claude_sha" --arg codex_sha "$codex_sha" --arg bootstrap_sha "$bootstrap_sha" \
+    --argjson claude_bytes "$claude_bytes" --argjson codex_bytes "$codex_bytes" --argjson bootstrap_bytes "$bootstrap_bytes" \
     --argjson claude_files "$claude_files" --argjson codex_files "$codex_files" \
     '{
       formatVersion: 1,
@@ -97,6 +99,11 @@ EOF
         signatureFile: "deepwind-release-manifest.json.asc"
       },
       provenance: {repository: "DeepWindAI/harness", revision: "deadbeef"},
+      bootstrap: {
+        file: "deepwind-init-v1.2.3.sh",
+        sha256: $bootstrap_sha,
+        bytes: $bootstrap_bytes
+      },
       archives: [
         {
           target: "claude",

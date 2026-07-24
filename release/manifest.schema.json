@@ -4,7 +4,7 @@
   "title": "DeepWind immutable release manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["formatVersion", "version", "tag", "channel", "endpoint", "signing", "provenance", "archives"],
+  "required": ["formatVersion", "version", "tag", "channel", "endpoint", "signing", "provenance", "bootstrap", "archives"],
   "properties": {
     "formatVersion": { "const": 1 },
     "version": { "type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?$" },
@@ -34,6 +34,15 @@
       "properties": {
         "repository": { "const": "DeepWindAI/harness" },
         "revision": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" }
+      }
+    },
+    "bootstrap": {
+      "type": "object", "additionalProperties": false,
+      "required": ["file", "sha256", "bytes"],
+      "properties": {
+        "file": { "type": "string", "pattern": "^deepwind-init-v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?(\\+[0-9A-Za-z-]+(\\.[0-9A-Za-z-]+)*)?\\.sh$" },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "bytes": { "type": "integer", "minimum": 1, "maximum": 2097152 }
       }
     },
     "archives": {

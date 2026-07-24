@@ -111,12 +111,14 @@ VERSION                          Source of truth for the version-check hook.
 ## Product and security decisions
 
 Each release is an exact strict-semver tag and contains target-specific,
-allowlisted archives, `SHA256SUMS`, a deterministic
+allowlisted archives, a deterministic versioned bootstrap
+(`deepwind-init-vX.Y.Z.sh`), `SHA256SUMS`, a deterministic
 `deepwind-release-manifest.json`, its detached signature, provenance, and the
-versioned public keyring. The manifest records every archive filename,
-SHA-256 digest, byte length, normalized member path, release revision, channel,
-and endpoint alias. Archive members with duplicate, absolute, or traversal
-paths are rejected before the manifest is written.
+versioned public keyring. The signed manifest records the bootstrap filename,
+SHA-256 digest, and byte length as well as every archive filename, digest, byte
+length, normalized member path, release revision, channel, and endpoint alias.
+Archive members with duplicate, absolute, or traversal paths are rejected
+before the manifest is written.
 
 The release workflow refuses to alter an existing release or use a key that is
 missing, inactive, malformed, or explicitly revoked in
