@@ -1,8 +1,8 @@
 # Weekly auto-release
 #
 # Every Monday 14:00 UTC (~7am Pacific), bumps the patch version, tags, builds
-# a `deepwind-harness-vX.Y.Z.tar.gz`, and creates a GitHub Release with the
-# tarball as an asset.
+# target archives plus a versioned bootstrap, and creates a GitHub Release
+# containing the complete signed manifest contract.
 #
 # Also runs on manual dispatch via the Actions UI (Run workflow → main),
 # and on any pushed tag matching `v*` (for human-driven minor/major releases).
@@ -152,9 +152,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash release/test-manifest.sh
+          bash release/test-workflow-contract.sh
           bash tests/installer/matrix-contract.sh
           bats tests/installer
-          shellcheck deepwind-init.sh lib/*.sh tests/installer/*.sh tests/installer/*.bash
+          shellcheck deepwind-init.sh lib/*.sh release/*.sh tests/installer/*.sh tests/installer/*.bash
 
   build-and-release:
     needs: [ bump-and-release, installer-matrix ]
@@ -311,6 +313,17 @@ jobs:
             build_target codex .agents/plugins/marketplace.json plugins/deepwind-harness codex/agents LICENSE VERSION
           fi
 
+          # The public website rewrites /install to this exact tag-scoped
+          # bootstrap asset. Its embedded keyring authenticates the signed
+          # manifest before any target archive is installed.
+          test -s release/keys/trusted-release-keyring.gpg || {
+            echo "trusted release keyring is required to build the bootstrap" >&2
+            exit 2
+          }
+          BOOTSTRAP="$ASSETS/deepwind-init-v${VERSION_FROM_TAG}.sh"
+          bash release/build-installer.sh "$BOOTSTRAP"
+          test -s "$BOOTSTRAP"
+
           CHANNEL_CONFIG=config/channels/staging.json
           jq -e '
             .formatVersion == 1 and
@@ -338,6 +351,7 @@ jobs:
             --endpoint-alias "$MCP_ALIAS" --endpoint-url "$MCP_URL" \
             --key-id "$RELEASE_GPG_KEY_ID" --not-before "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             --not-after "$(date -u -d '+180 days' +%Y-%m-%dT%H:%M:%SZ)" \
+            --bootstrap "$BOOTSTRAP" \
             --source-revision "$(git rev-parse HEAD)" --output "$ASSETS/deepwind-release-manifest.json" \
             "${BUILD_ARGS[@]}"
           gpg --batch --yes --pinentry-mode loopback --passphrase "$RELEASE_GPG_PASSPHRASE" \
@@ -374,9 +388,11 @@ jobs:
             echo "## Immutable release assets"
             echo ""
             echo "- Signed manifest SHA-256: \`${MANIFEST_SHA}\`"
+            echo "- Versioned bootstrap: \`deepwind-init-${TAG}.sh\`"
             echo "- Target archives, \`SHA256SUMS\`, detached manifest signature, provenance, and public keyring are attached to this exact tag."
             echo ""
             echo '```bash'
+            echo "curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/deepwind-init-${TAG}.sh"
             echo "curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/deepwind-release-manifest.json"
             echo "curl -fsSLO https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/deepwind-release-manifest.json.asc"
             echo '```'

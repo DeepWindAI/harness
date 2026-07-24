@@ -64,7 +64,10 @@ jobs:
 
       - name: Run portable fixture matrix
         shell: bash
-        run: bash tests/installer/matrix-contract.sh
+        run: |
+          bash release/test-manifest.sh
+          bash release/test-workflow-contract.sh
+          bash tests/installer/matrix-contract.sh
 
       - name: Run Bats installer suite
         shell: bash
@@ -72,4 +75,4 @@ jobs:
 
       - name: Run ShellCheck
         shell: bash
-        run: shellcheck deepwind-init.sh lib/*.sh tests/installer/*.sh tests/installer/*.bash
+        run: shellcheck deepwind-init.sh lib/*.sh release/*.sh tests/installer/*.sh tests/installer/*.bash

@@ -33,6 +33,17 @@ teardown() {
   [ ! -e "$FIXTURE_HOME/.codex" ]
 }
 
+@test "manifest without the versioned bootstrap contract is rejected" {
+  jq 'del(.bootstrap)' "$FIXTURE_RELEASE/deepwind-release-manifest.json" \
+    > "$FIXTURE_RELEASE/deepwind-release-manifest.json.next"
+  mv "$FIXTURE_RELEASE/deepwind-release-manifest.json.next" \
+    "$FIXTURE_RELEASE/deepwind-release-manifest.json"
+  run run_fixture_installer
+  [ "$status" -ne 0 ]
+  [ ! -e "$FIXTURE_HOME/.claude" ]
+  [ ! -e "$FIXTURE_HOME/.codex" ]
+}
+
 @test "dry run writes no destination or state files" {
   run run_fixture_installer --dry-run
   [ "$status" -eq 0 ]

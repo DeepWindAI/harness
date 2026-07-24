@@ -65,6 +65,9 @@ validate_manifest() {
       (.provenance.revision | test("^[0-9a-f]{7,64}$")) and
       (.endpoint.alias | test("^[a-z0-9][a-z0-9-]{0,62}$")) and
       (.endpoint.url | test("^https://[A-Za-z0-9.-]+(/[^?#]*)?$")) and
+      .bootstrap.file == ("deepwind-init-v" + $version + ".sh") and
+      (.bootstrap.sha256 | test("^[a-f0-9]{64}$")) and
+      (.bootstrap.bytes | type == "number" and . > 0 and . <= 2097152) and
       (.archives | length >= 1) and
       ([.archives[].target] | unique | length) == (.archives | length) and
       (.signing.signatureFile == "deepwind-release-manifest.json.asc") and

@@ -39,6 +39,17 @@ fi
 
 remove_fixture_release
 make_fixture_release
+jq 'del(.bootstrap)' "$FIXTURE_RELEASE/deepwind-release-manifest.json" \
+  > "$FIXTURE_RELEASE/deepwind-release-manifest.json.next"
+mv "$FIXTURE_RELEASE/deepwind-release-manifest.json.next" \
+  "$FIXTURE_RELEASE/deepwind-release-manifest.json"
+if run_fixture_installer >/dev/null 2>&1; then
+  fail 'manifest without versioned bootstrap contract was accepted'
+fi
+[ ! -e "$FIXTURE_HOME/.claude" ] || fail 'invalid bootstrap contract mutated destination'
+
+remove_fixture_release
+make_fixture_release
 run_fixture_installer --dry-run >/dev/null
 [ ! -e "$FIXTURE_HOME/.deepwind" ] || fail 'dry run wrote state'
 

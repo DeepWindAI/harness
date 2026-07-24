@@ -51,6 +51,14 @@ credentials to the release workflow. An empty keyring is not a development
 fallback. See [installation](docs/installation.md#release-trust) for the
 bootstrap limitation and release-verification model.
 
+Every exact strict-semver release contains target-specific allowlisted archives,
+a deterministic versioned bootstrap (`deepwind-init-vX.Y.Z.sh`), `SHA256SUMS`,
+a deterministic `deepwind-release-manifest.json`, its detached signature,
+provenance, and the versioned public keyring. The signed manifest records the
+bootstrap filename, SHA-256 digest, and byte length alongside every archive's
+filename, digest, byte length, normalized member paths, release revision,
+channel, and endpoint alias. The installer never treats `main` as a payload.
+
 ## Development
 
 Run the portable validation suite from a checkout:
