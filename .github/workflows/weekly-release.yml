@@ -88,6 +88,12 @@ jobs:
           esac
           NEW="$MAJ.$MIN.$PAT"
           echo "$NEW" > VERSION
+          PLUGIN_MANIFEST=plugins/deepwind-harness/.codex-plugin/plugin.json
+          if [ -f "$PLUGIN_MANIFEST" ]; then
+            jq --arg version "$NEW" '.version = $version' \
+              "$PLUGIN_MANIFEST" > "${PLUGIN_MANIFEST}.next"
+            mv "${PLUGIN_MANIFEST}.next" "$PLUGIN_MANIFEST"
+          fi
           echo "  bumped: $OLD → $NEW ($INPUT_BUMP)"
           echo "new_version=$NEW" >> "$GITHUB_OUTPUT"
           echo "tag=v$NEW" >> "$GITHUB_OUTPUT"
@@ -99,6 +105,9 @@ jobs:
         run: |
           set -euo pipefail
           git add VERSION
+          if [ -f plugins/deepwind-harness/.codex-plugin/plugin.json ]; then
+            git add plugins/deepwind-harness/.codex-plugin/plugin.json
+          fi
           git commit -m "release: ${TAG} (weekly auto-bump)" || { echo "no changes — exiting"; exit 0; }
           git tag -a "${TAG}" -m "${TAG} — weekly auto-release"
           git push origin main
@@ -229,6 +238,7 @@ jobs:
           ref: ${{ needs.resolve-release-ref.outputs.tag }}
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
 
       - name: Verify immutable tag version
         env:
@@ -274,11 +284,12 @@ jobs:
           export SOURCE_DATE_EPOCH
           SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
 
-          if [ -f plugins/deepwind-harness/.codex-plugin/plugin.json ]; then
-            PLUGIN_MANIFEST=plugins/deepwind-harness/.codex-plugin/plugin.json
-            jq --arg version "$VERSION_FROM_TAG" '.version = $version' \
-              "$PLUGIN_MANIFEST" > "${PLUGIN_MANIFEST}.next"
-            mv "${PLUGIN_MANIFEST}.next" "$PLUGIN_MANIFEST"
+          PLUGIN_MANIFEST=plugins/deepwind-harness/.codex-plugin/plugin.json
+          if [ -f "$PLUGIN_MANIFEST" ]; then
+            test "$(jq -r '.version' "$PLUGIN_MANIFEST")" = "$VERSION_FROM_TAG" || {
+              echo "Codex plugin version does not match immutable tag $TAG" >&2
+              exit 2
+            }
           fi
 
           build_target() {

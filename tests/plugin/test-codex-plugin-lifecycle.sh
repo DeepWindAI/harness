@@ -20,6 +20,13 @@ fixture_home="$fixture/home"
 mkdir -p "$release_root/.agents/plugins" "$release_root/plugins" "$fixture_home"
 cp "$ROOT/.agents/plugins/marketplace.json" "$release_root/.agents/plugins/marketplace.json"
 cp -R "$ROOT/plugins/deepwind-harness" "$release_root/plugins/deepwind-harness"
+release_version=$(jq -r '.version' \
+  "$release_root/plugins/deepwind-harness/.codex-plugin/plugin.json")
+base_version=${release_version%%[-+]*}
+IFS='.' read -r version_major version_minor version_patch <<EOF
+$base_version
+EOF
+upgraded_version="${version_major}.${version_minor}.$((version_patch + 1))"
 
 run_codex() {
   env -u CODEX_HOME HOME="$fixture_home" codex "$@"
@@ -28,10 +35,10 @@ run_codex() {
 run_codex plugin marketplace add "$release_root" --json >/dev/null
 run_codex plugin add deepwind-harness@deepwind --json >/dev/null
 installed=$(run_codex plugin list --json)
-jq -e --arg root "$release_root" '
+jq -e --arg root "$release_root" --arg version "$release_version" '
   any(.installed[];
     .pluginId == "deepwind-harness@deepwind" and
-    .version == "1.1.6" and
+    .version == $version and
     .installed == true and
     .enabled == true and
     .marketplaceSource.source == $root
@@ -39,13 +46,14 @@ jq -e --arg root "$release_root" '
 ' <<<"$installed" >/dev/null
 
 manifest="$release_root/plugins/deepwind-harness/.codex-plugin/plugin.json"
-jq '.version = "1.1.7"' "$manifest" > "$manifest.next"
+jq --arg version "$upgraded_version" '.version = $version' \
+  "$manifest" > "$manifest.next"
 mv "$manifest.next" "$manifest"
 run_codex plugin add deepwind-harness@deepwind --json >/dev/null
 upgraded=$(run_codex plugin list --json)
-jq -e '
+jq -e --arg version "$upgraded_version" '
   any(.installed[];
-    .pluginId == "deepwind-harness@deepwind" and .version == "1.1.7"
+    .pluginId == "deepwind-harness@deepwind" and .version == $version
   )
 ' <<<"$upgraded" >/dev/null
 

@@ -58,6 +58,7 @@ require_job_literal "$WORKFLOW" build-and-release \
   'needs: [ bump-and-release, resolve-release-ref, installer-matrix ]'
 require_job_literal "$WORKFLOW" build-and-release \
   'ref: ${{ needs.resolve-release-ref.outputs.tag }}'
+require_job_literal "$WORKFLOW" build-and-release 'persist-credentials: false'
 require_job_literal "$WORKFLOW" build-and-release "needs.installer-matrix.result == 'success' &&"
 matrix_guard_line=$(job_block "$WORKFLOW" build-and-release \
   | grep -nF "needs.installer-matrix.result == 'success' &&" | cut -d: -f1)
@@ -74,6 +75,16 @@ if job_block "$WORKFLOW" build-and-release \
   | grep -F 'echo "$VERSION_FROM_TAG" > VERSION' >/dev/null; then
   fail 'release job mutates the tested tag tree before signing'
 fi
+if job_block "$WORKFLOW" build-and-release \
+  | grep -F 'mv "${PLUGIN_MANIFEST}.next" "$PLUGIN_MANIFEST"' >/dev/null; then
+  fail 'release job mutates the tested Codex plugin before signing'
+fi
+require_job_literal "$WORKFLOW" bump-and-release \
+  'jq --arg version "$NEW"'
+require_job_literal "$WORKFLOW" bump-and-release \
+  'git add plugins/deepwind-harness/.codex-plugin/plugin.json'
+require_job_literal "$WORKFLOW" build-and-release \
+  "test \"\$(jq -r '.version' \"\$PLUGIN_MANIFEST\")\" = \"\$VERSION_FROM_TAG\""
 
 # Least privilege belongs at job scope. Test-only matrix jobs never retain a
 # credential helper, while only bump/release jobs receive contents:write.
