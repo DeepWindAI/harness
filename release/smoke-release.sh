@@ -52,7 +52,9 @@ is_https_url "$RELEASE_URL" || fail '--release-url must be an HTTPS URL'
 
 for command in curl gpgv jq grep awk cmp mktemp find sort; do need "$command"; done
 [ "$(id -u)" -ne 0 ] || fail 'installer smoke must run as a non-root user'
-TMP=$(mktemp -d "${TMPDIR:-/tmp}/deepwind-release-smoke.XXXXXX")
+TMP_BASE=$(CDPATH='' cd -- "${TMPDIR:-/tmp}" && pwd -P) \
+  || fail 'temporary directory base is not accessible'
+TMP=$(mktemp -d "${TMP_BASE%/}/deepwind-release-smoke.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
 fetch_release_asset() {
