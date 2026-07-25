@@ -245,6 +245,7 @@ jobs:
         run: |
           set -euo pipefail
           bash release/test-manifest.sh
+          bash release/test-smoke-release.sh
           bash release/test-workflow-contract.sh
           bash tests/installer/matrix-contract.sh
           bats tests/installer
