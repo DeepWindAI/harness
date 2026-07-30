@@ -112,9 +112,9 @@ if rg -n '~/.agents/plugins/marketplace.json|personal marketplace' "$PLUGIN/READ
   fail 'plugin lifecycle must not write a personal marketplace'
 fi
 
-rg -q 'build_target codex .*\.agents/plugins/marketplace\.json plugins/deepwind-harness' \
+rg -q 'build_target codex .*\.agents/plugins/marketplace\.json .*\.agents/skills .*plugins/deepwind-harness .*codex/agents .*codex/skills' \
   "$ROOT/.github/workflows/weekly-release.yml" \
-  || fail 'Codex release archive does not contain its marketplace and plugin together'
+  || fail 'Codex release archive does not contain marketplace, plugin, roles, and skill aliases together'
 rg -q '\.version = \$version' "$ROOT/.github/workflows/weekly-release.yml" \
   || fail 'release build does not align plugin semver with the immutable release'
 rg -q 'CODEX_MARKETPLACE_DIR' "$ROOT/lib/state.sh" \

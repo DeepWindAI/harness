@@ -10,6 +10,11 @@ The Codex target installs a release-contained plugin marketplace under
 - `~/.codex/agents/harness-planner.toml`
 - `~/.codex/agents/security-auditor.toml`
 
+It also installs the four reusable `deepwind-harness-*` skill aliases in both
+`~/.codex/skills` and `~/.agents/skills`. Those shared local roots let Codex
+and compatible agents discover the same release-provided harness skills from
+any repository; the aliases are not copied into each project.
+
 The plugin bundle contains workflow skills only. It does not contain OAuth
 credentials, hooks, applications, MCP servers, or a personal marketplace
 configuration. The managed marketplace and plugin live together below the

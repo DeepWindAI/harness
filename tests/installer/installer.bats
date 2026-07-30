@@ -14,6 +14,9 @@ teardown() {
   run run_fixture_installer
   [ "$status" -eq 0 ]
   [ -f "$FIXTURE_HOME/.claude/agents/harness-coordinator.md" ]
+  [ -f "$FIXTURE_HOME/.claude/skills/deepwind-harness-prep/SKILL.md" ]
+  [ -f "$FIXTURE_HOME/.codex/skills/deepwind-harness-prep/SKILL.md" ]
+  [ -f "$FIXTURE_HOME/.agents/skills/deepwind-harness-prep/SKILL.md" ]
   [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/.codex-plugin/plugin.json" ]
   [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/.agents/plugins/marketplace.json" ]
   [ ! -e "$FIXTURE_HOME/codex-plugin-calls" ]

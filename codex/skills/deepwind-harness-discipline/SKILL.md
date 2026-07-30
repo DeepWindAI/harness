@@ -1,5 +1,5 @@
 ---
-name: harness-discipline
+name: deepwind-harness-discipline
 description: TDD discipline and progress tracking for multi-session harness projects. Apply this skill when working on any long-running harness project (16+ hours, 3+ sessions) to ensure consistent TDD cycle, progress tracking, and reporting standards. Generic patterns work across all project types; if using PM33's internal harness conventions, see pm33-specific.md companion.
 whenToUse: When working on harness projects of any kind, or when a harness coordinator assigns you work. Apply regardless of your specialist role (backend, frontend, database, etc.). For PM33-internal work, also consult pm33-specific.md.
 triggers: ["harness project", "working on harness", "implement harness feature", "coordinator assigned me"]

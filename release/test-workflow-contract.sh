@@ -81,6 +81,7 @@ require_linux_only_actionlint "$INSTALLER_WORKFLOW"
 
 require_literal 'BOOTSTRAP="$ASSETS/deepwind-init-v${VERSION_FROM_TAG}.sh"'
 require_literal 'bash release/build-installer.sh "$BOOTSTRAP"'
+require_literal 'bash release/build-harness-skill-aliases.sh'
 require_literal '--bootstrap "$BOOTSTRAP"'
 require_literal 'sha256sum deepwind-* public-keyring.json'
 require_literal 'test -s "$BOOTSTRAP"'
@@ -258,6 +259,11 @@ cmp "$TMP/deepwind-init-v1.2.3.sh" "$TMP/deepwind-init-v1.2.3-again.sh" \
   || fail 'same tagged tree did not produce a byte-identical bootstrap'
 test -x "$TMP/deepwind-init-v1.2.3.sh" || fail 'generated bootstrap is not executable'
 
+bash "$ROOT/release/build-harness-skill-aliases.sh"
+git -C "$ROOT" diff --exit-code -- skills/deepwind-harness-* \
+  codex/skills/deepwind-harness-* .agents/skills/deepwind-harness-* \
+  || fail 'generated DeepWind harness skill aliases are stale'
+
 if grep -Eq \
   'raw[.]githubusercontent[.]com/[^ ]+/main/|/archive/refs/heads/main|/releases/download/main/' \
   "$WORKFLOW" "$TMP/deepwind-init-v1.2.3.sh"; then
@@ -267,7 +273,8 @@ fi
 tar -C "$ROOT" -czf "$TMP/deepwind-harness-claude-v1.2.3.tar.gz" \
   agents skills frameworks payload CLAUDE.md.starter LICENSE VERSION
 tar -C "$ROOT" -czf "$TMP/deepwind-harness-codex-v1.2.3.tar.gz" \
-  .agents/plugins/marketplace.json plugins/deepwind-harness codex/agents LICENSE VERSION
+  .agents/plugins/marketplace.json .agents/skills plugins/deepwind-harness \
+  codex/agents codex/skills LICENSE VERSION
 bash "$ROOT/release/scan-release-archives.sh" \
   "$TMP/deepwind-harness-claude-v1.2.3.tar.gz" \
   "$TMP/deepwind-harness-codex-v1.2.3.tar.gz" >/dev/null \
