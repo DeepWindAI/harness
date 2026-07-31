@@ -1,7 +1,7 @@
 {
   "name": "deepwind-harness",
   "version": "1.1.8",
-  "description": "Plan and coordinate large engineering efforts with discovery, adversarial review, isolated execution, and evidence-based delivery.",
+  "description": "Evidence-gated planning and execution workflows for complex engineering work.",
   "author": {
     "name": "DeepWind",
     "url": "https://deepwind.ai/"
@@ -10,27 +10,34 @@
   "repository": "https://github.com/DeepWindAI/harness",
   "license": "MIT",
   "keywords": [
-    "engineering",
-    "planning",
+    "engineering-workflows",
+    "project-planning",
     "multi-agent",
+    "quality-gates",
     "tdd"
   ],
   "skills": "./skills/",
   "interface": {
     "displayName": "DeepWind Harness",
-    "shortDescription": "Plan and execute large engineering efforts safely.",
-    "longDescription": "A Codex-native workflow for discovery, sprint planning, adversarial review, worktree-isolated specialist execution, and evidence-based delivery.",
+    "shortDescription": "Evidence-gated planning for complex engineering work.",
+    "longDescription": "Plan and coordinate multi-workstream engineering work with discovery, explicit quality gates, adversarial review, isolated specialists, and evidence-based delivery. This skills-only plugin does not connect to external services or manage credentials.",
     "developerName": "DeepWind",
     "category": "Developer Tools",
     "capabilities": [
-      "Interactive",
+      "Read",
       "Write"
     ],
     "websiteURL": "https://deepwind.ai/",
+    "privacyPolicyURL": "https://deepwind.ai/privacy",
+    "termsOfServiceURL": "https://deepwind.ai/terms",
     "defaultPrompt": [
-      "Prepare a harness plan for this engineering goal.",
-      "Review and execute the current harness project."
+      "Prepare a harness plan for this multi-workstream engineering goal.",
+      "Review this harness plan for missing evidence and execution risks.",
+      "Coordinate the current harness project with isolated specialists."
     ],
-    "brandColor": "#0B1220"
+    "brandColor": "#0B1220",
+    "composerIcon": "./assets/deepwind-icon.png",
+    "logo": "./assets/deepwind-logo.png",
+    "logoDark": "./assets/deepwind-logo-dark.png"
   }
 }
