@@ -62,9 +62,11 @@ files changed by an interrupted or failed run.
 
 Installed locations are:
 
-- Claude agents, skills, and optional hook: `~/.claude/`
+- Claude agents, skills, and optional hooks: `~/.claude/`
 - Claude frameworks: `~/deepwind-frameworks/`
 - Claude command: `~/.deepwind/bin/deepwind`
+- Merge-gate helpers: `~/.deepwind/bin/guarded-merge.sh`,
+  `~/.deepwind/bin/check-sensitive-review.sh`, `~/.deepwind/bin/agent-approve.sh`
 - Codex role TOMLs: `~/.codex/agents/`
 - Codex release-contained marketplace and plugin: `~/.deepwind/install/share/codex-marketplace/`
 - Installer state: `~/.deepwind/install/state.tsv`
@@ -84,9 +86,9 @@ independent user-owned backup for important customizations; the retained copy
 is a recovery aid, not a substitute for your backup policy. See
 [upgrading and removal](upgrading.md).
 
-## Optional Claude hook
+## Optional Claude hooks
 
-The default Claude target includes its session hook. Omit it with:
+The default Claude target includes its session hooks. Omit them with:
 
 ```sh
 curl -fsSL https://deepwind.ai/install | bash -s -- --target claude --skip-hooks
@@ -94,3 +96,27 @@ curl -fsSL https://deepwind.ai/install | bash -s -- --target claude --skip-hooks
 
 Restart Claude Code or start a new Codex thread after installation so newly
 installed skills and roles are loaded.
+
+## Merge-gate
+
+The Claude target installs a merge-gate that stops a coordinator from
+self-merging an unreviewed, security-sensitive pull request. It has two parts:
+
+- Helper scripts in `~/.deepwind/bin/`. `guarded-merge.sh <PR>` is the sanctioned
+  way to merge — it refuses a PR that touches sensitive paths without a review
+  signal (an approving review or the `reviewed:code` label). `agent-approve.sh`
+  records a specialist review as that signal, and `check-sensitive-review.sh` is
+  the shared decision engine.
+- A `PreToolUse` hook, `~/.claude/hooks/pre-bash-merge-guard.sh`, that blocks a
+  raw `gh pr merge <PR>` for the same case. The installer registers it in
+  `~/.claude/settings.json` idempotently: it adds one `PreToolUse` entry for the
+  hook, preserves the rest of the file, and never rewrites a settings file it did
+  not need to change. An unparseable or symlinked `settings.json` is left
+  untouched and reported so you can register the hook by hand.
+
+Each repository declares its own sensitive surfaces in a `.deepwind/sensitive-paths`
+file (one extended-regex per line); the gate reads that policy from the pull
+request's base branch and always protects its own machinery. A repository with no
+policy file falls back to a conservative default. `--skip-hooks` omits the hook and
+its registration; the helper scripts are still installed. `--dry-run` and `--check`
+report whether the hook would be, or is, registered.

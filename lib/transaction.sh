@@ -177,6 +177,11 @@ apply_transaction() {
     esac
   done < "$PLAN_FILE"
 
+  # Register the merge-guard hook in settings.json (journaled via install_one_file, so a
+  # later failure rolls back the prior settings.json). No-op unless the hook is installed
+  # and not already registered. Runs before the state write so it shares this transaction.
+  register_merge_gate_hook
+
   next_state="$WORK_DIR/state.next"
   build_next_state "$next_state"
   install_one_file "$next_state" "$STATE_FILE" 0

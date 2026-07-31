@@ -24,6 +24,14 @@ map_destination() {
     claude:payload/bin/deepwind)
       printf '%s/deepwind\n' "$BIN_DIR"
       ;;
+    claude:payload/bin/check-sensitive-review.sh|\
+    claude:payload/bin/guarded-merge.sh|\
+    claude:payload/bin/agent-approve.sh)
+      # Merge-gate helper scripts — installed next to `deepwind` so guarded-merge.sh
+      # finds check-sensitive-review.sh as a sibling and the hook can call them by
+      # absolute path. Executable via the $BIN_DIR/* chmod-755 arm in transaction.sh.
+      printf '%s/%s\n' "$BIN_DIR" "${member#payload/bin/}"
+      ;;
     claude:payload/mcp/*|claude:LICENSE|claude:VERSION)
       printf '%s/share/claude/%s\n' "$INSTALL_DIR" "$member"
       ;;
@@ -186,6 +194,7 @@ print_plan() {
   while IFS='	' read -r plan_target_name source_path destination new_digest action; do
     printf '%-9s %-8s %s\n' "$plan_target_name" "$action" "$destination"
   done < "$PLAN_FILE"
+  print_merge_gate_plan
   return 0
 }
 
@@ -197,6 +206,7 @@ check_plan() {
       *) drift=1; printf 'drift: %s (%s)\n' "$destination" "$action" ;;
     esac
   done < "$PLAN_FILE"
+  check_merge_gate_registration || drift=1
   check_recovery_backups || drift=1
   if target_selected codex; then
     print_codex_plugin_status || drift=1

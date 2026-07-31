@@ -119,6 +119,7 @@ jobs:
           bash release/test-manifest.sh
           bash release/test-smoke-release.sh
           bash release/test-workflow-contract.sh
+          bash release/test-settings-registration.sh
           bash tests/installer/matrix-contract.sh
 
       - name: Run Bats installer suite

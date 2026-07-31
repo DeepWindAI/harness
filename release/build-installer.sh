@@ -22,7 +22,7 @@ fi
   printf '%s\n' "IFS=\$'\\n\\t'"
   printf '%s\n' 'umask 077'
   printf "EMBEDDED_TRUSTED_KEYRING_B64='%s'\n" "$EMBEDDED_KEYRING"
-  for unit in state args manifest install-target transaction codex-plugin codex-mcp doctor; do
+  for unit in state args manifest install-target transaction settings codex-plugin codex-mcp doctor; do
     printf '\n# ---- lib/%s.sh ----\n' "$unit"
     sed '/^#!/d' "$ROOT/lib/$unit.sh"
   done
