@@ -30,7 +30,11 @@ curl -fsSL https://deepwind.ai/install | bash -s -- --check
 ## What is installed
 
 Claude files are installed under `~/.claude` and supporting framework files
-under `~/deepwind-frameworks`. Codex receives a release-contained plugin
+under `~/deepwind-frameworks`. The Claude target also installs a merge-gate —
+`guarded-merge.sh` and its helpers under `~/.deepwind/bin`, plus a `PreToolUse`
+hook registered in `~/.claude/settings.json` — that stops a coordinator from
+self-merging an unreviewed, security-sensitive pull request (see
+[installation](docs/installation.md#merge-gate)). Codex receives a release-contained plugin
 marketplace under `~/.deepwind/install/share/codex-marketplace`, four explicit
 role TOMLs under `~/.codex/agents`, and the `deepwind-harness-*` skill aliases
 under both `~/.codex/skills` and `~/.agents/skills`. The aliases make the
