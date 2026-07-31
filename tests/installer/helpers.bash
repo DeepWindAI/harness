@@ -26,9 +26,12 @@ make_fixture_release() {
     "$FIXTURE_ROOT/bin" \
     "$FIXTURE_RELEASE/claude/agents" \
     "$FIXTURE_RELEASE/claude/skills/harness-prep" \
+    "$FIXTURE_RELEASE/claude/skills/deepwind-harness-prep" \
     "$FIXTURE_RELEASE/codex/.agents/plugins" \
+    "$FIXTURE_RELEASE/codex/.agents/skills/deepwind-harness-prep" \
     "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin" \
-    "$FIXTURE_RELEASE/codex/codex/agents"
+    "$FIXTURE_RELEASE/codex/codex/agents" \
+    "$FIXTURE_RELEASE/codex/codex/skills/deepwind-harness-prep"
   printf 'fixture trusted keyring\n' > "$FIXTURE_ROOT/test-keyring.gpg"
   bash "$TEST_ROOT/release/build-installer.sh" \
     "$FIXTURE_INSTALLER" "$FIXTURE_ROOT/test-keyring.gpg"
@@ -56,6 +59,9 @@ make_fixture_release() {
 
   printf 'claude-agent-v1\n' > "$FIXTURE_RELEASE/claude/agents/harness-coordinator.md"
   printf 'claude-skill-v1\n' > "$FIXTURE_RELEASE/claude/skills/harness-prep/SKILL.md"
+  printf 'claude-alias-skill-v1\n' > "$FIXTURE_RELEASE/claude/skills/deepwind-harness-prep/SKILL.md"
+  printf 'codex-agents-alias-skill-v1\n' > "$FIXTURE_RELEASE/codex/.agents/skills/deepwind-harness-prep/SKILL.md"
+  printf 'codex-alias-skill-v1\n' > "$FIXTURE_RELEASE/codex/codex/skills/deepwind-harness-prep/SKILL.md"
   printf '{"name":"deepwind-harness"}\n' \
     > "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin/plugin.json"
   printf '{"name":"deepwind","plugins":[]}\n' \

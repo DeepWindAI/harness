@@ -31,10 +31,12 @@ curl -fsSL https://deepwind.ai/install | bash -s -- --check
 
 Claude files are installed under `~/.claude` and supporting framework files
 under `~/deepwind-frameworks`. Codex receives a release-contained plugin
-marketplace under `~/.deepwind/install/share/codex-marketplace` and four
-explicit role TOMLs under `~/.codex/agents`. The release manifest records every
-managed file; a modified file is preserved unless the user explicitly chooses
-`--force`.
+marketplace under `~/.deepwind/install/share/codex-marketplace`, four explicit
+role TOMLs under `~/.codex/agents`, and the `deepwind-harness-*` skill aliases
+under both `~/.codex/skills` and `~/.agents/skills`. The aliases make the
+release-provided harness skills available from every local repository without
+per-repository copies. The release manifest records every managed file; a
+modified file is preserved unless the user explicitly chooses `--force`.
 
 Codex plugin enablement is also explicit: add `--enable-codex-plugin` to the
 installer command to let the Codex CLI activate the verified release-contained

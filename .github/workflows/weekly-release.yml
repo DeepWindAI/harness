@@ -364,11 +364,17 @@ jobs:
             BUILD_ARGS+=(--archive "${target}=${output}")
           }
           BUILD_ARGS=()
+          bash release/build-harness-skill-aliases.sh
+          git diff --exit-code -- skills/deepwind-harness-* \
+            codex/skills/deepwind-harness-* .agents/skills/deepwind-harness-* || {
+            echo "generated DeepWind harness skill aliases are stale; run release/build-harness-skill-aliases.sh and commit the result" >&2
+            exit 2
+          }
           build_target claude agents skills frameworks payload CLAUDE.md.starter LICENSE VERSION
           # The Codex archive becomes part of this same signed contract only
           # after the Codex plugin and role pack exist (DW-003/DW-004).
           if [ -d plugins/deepwind-harness ] && [ -d codex/agents ]; then
-            build_target codex .agents/plugins/marketplace.json plugins/deepwind-harness codex/agents LICENSE VERSION
+            build_target codex .agents/plugins/marketplace.json .agents/skills plugins/deepwind-harness codex/agents codex/skills LICENSE VERSION
           fi
           bash release/scan-release-archives.sh "$ASSETS"/deepwind-harness-*.tar.gz
 

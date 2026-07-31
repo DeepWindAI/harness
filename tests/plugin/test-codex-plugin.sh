@@ -26,12 +26,36 @@ jq -e '
   .skills == "./skills/" and
   .interface.displayName == "DeepWind Harness" and
   .interface.developerName == "DeepWind" and
+  .interface.privacyPolicyURL == "https://deepwind.ai/privacy" and
+  .interface.termsOfServiceURL == "https://deepwind.ai/terms" and
+  .interface.composerIcon == "./assets/deepwind-icon.png" and
+  .interface.logo == "./assets/deepwind-logo.png" and
+  .interface.logoDark == "./assets/deepwind-logo-dark.png" and
+  .interface.capabilities == ["Read", "Write"] and
   (.interface.defaultPrompt | length >= 1 and length <= 3) and
   (has("hooks") | not) and
   (has("mcpServers") | not) and
   (has("apps") | not)
 ' "$PLUGIN/.codex-plugin/plugin.json" >/dev/null \
   || fail 'plugin manifest contract failed'
+
+for asset in deepwind-icon.png deepwind-logo.png deepwind-logo-dark.png; do
+  [ -s "$PLUGIN/assets/$asset" ] \
+    || fail "plugin submission asset is missing: $asset"
+done
+
+[ -f "$PLUGIN/submission/README.md" ] \
+  || fail 'plugin submission package README is missing'
+[ -f "$PLUGIN/submission/test-cases.md" ] \
+  || fail 'plugin submission test cases are missing'
+rg -q '^## Positive test cases$' "$PLUGIN/submission/test-cases.md" \
+  || fail 'plugin submission package has no positive test section'
+rg -q '^## Negative test cases$' "$PLUGIN/submission/test-cases.md" \
+  || fail 'plugin submission package has no negative test section'
+[ "$(rg -c '^### P[1-5]:' "$PLUGIN/submission/test-cases.md")" -eq 5 ] \
+  || fail 'plugin submission package must contain five positive test cases'
+[ "$(rg -c '^### N[1-3]:' "$PLUGIN/submission/test-cases.md")" -eq 3 ] \
+  || fail 'plugin submission package must contain three negative test cases'
 
 jq -e '
   .name == "deepwind" and
@@ -112,9 +136,9 @@ if rg -n '~/.agents/plugins/marketplace.json|personal marketplace' "$PLUGIN/READ
   fail 'plugin lifecycle must not write a personal marketplace'
 fi
 
-rg -q 'build_target codex .*\.agents/plugins/marketplace\.json plugins/deepwind-harness' \
+rg -q 'build_target codex .*\.agents/plugins/marketplace\.json .*\.agents/skills .*plugins/deepwind-harness .*codex/agents .*codex/skills' \
   "$ROOT/.github/workflows/weekly-release.yml" \
-  || fail 'Codex release archive does not contain its marketplace and plugin together'
+  || fail 'Codex release archive does not contain marketplace, plugin, roles, and skill aliases together'
 rg -q '\.version = \$version' "$ROOT/.github/workflows/weekly-release.yml" \
   || fail 'release build does not align plugin semver with the immutable release'
 rg -q 'CODEX_MARKETPLACE_DIR' "$ROOT/lib/state.sh" \

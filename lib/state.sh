@@ -24,6 +24,7 @@ sha256_file() {
 configure_paths() {
   CLAUDE_DIR="$HOME/.claude"
   CODEX_DIR="$HOME/.codex"
+  AGENTS_DIR="$HOME/.agents"
   FRAMEWORKS_DIR="$HOME/deepwind-frameworks"
   INSTALL_DIR="$HOME/.deepwind/install"
   CODEX_MARKETPLACE_DIR="$INSTALL_DIR/share/codex-marketplace"
@@ -113,6 +114,8 @@ recovery_destination_allowed() {
     "$CLAUDE_DIR"/skills/*|\
     "$CLAUDE_DIR"/hooks/*|\
     "$CODEX_DIR"/agents/*|\
+    "$CODEX_DIR"/skills/*|\
+    "$AGENTS_DIR"/skills/*|\
     "$FRAMEWORKS_DIR"/*|\
     "$BIN_DIR"/*|\
     "$INSTALL_DIR"/share/*)

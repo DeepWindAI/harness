@@ -3,6 +3,9 @@
 This directory is a release-contained Codex plugin. It contains workflow skills only: no
 credentials, hooks, apps, or connection manifests.
 
+For public Plugins Directory submission material, including reviewer test cases,
+see [submission/README.md](submission/README.md).
+
 Copying this directory does not install or enable the plugin. Codex installs plugins from a
 configured marketplace snapshot. The signed DeepWind release keeps this directory and
 `.agents/plugins/marketplace.json` under one verified release root.

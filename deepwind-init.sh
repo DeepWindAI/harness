@@ -33,6 +33,7 @@ sha256_file() {
 configure_paths() {
   CLAUDE_DIR="$HOME/.claude"
   CODEX_DIR="$HOME/.codex"
+  AGENTS_DIR="$HOME/.agents"
   FRAMEWORKS_DIR="$HOME/deepwind-frameworks"
   INSTALL_DIR="$HOME/.deepwind/install"
   CODEX_MARKETPLACE_DIR="$INSTALL_DIR/share/codex-marketplace"
@@ -122,6 +123,8 @@ recovery_destination_allowed() {
     "$CLAUDE_DIR"/skills/*|\
     "$CLAUDE_DIR"/hooks/*|\
     "$CODEX_DIR"/agents/*|\
+    "$CODEX_DIR"/skills/*|\
+    "$AGENTS_DIR"/skills/*|\
     "$FRAMEWORKS_DIR"/*|\
     "$BIN_DIR"/*|\
     "$INSTALL_DIR"/share/*)
@@ -521,11 +524,23 @@ map_destination() {
     codex:.agents/plugins/marketplace.json)
       printf '%s/.agents/plugins/marketplace.json\n' "$CODEX_MARKETPLACE_DIR"
       ;;
+    codex:.agents/skills/deepwind-harness-prep/SKILL.md|\
+    codex:.agents/skills/deepwind-harness-planner/SKILL.md|\
+    codex:.agents/skills/deepwind-harness-coordinator/SKILL.md|\
+    codex:.agents/skills/deepwind-harness-discipline/SKILL.md)
+      printf '%s/skills/%s\n' "$AGENTS_DIR" "${member#.agents/skills/}"
+      ;;
     codex:codex/agents/frontend-developer.toml|\
     codex:codex/agents/harness-coordinator.toml|\
     codex:codex/agents/harness-planner.toml|\
     codex:codex/agents/security-auditor.toml)
       printf '%s/agents/%s\n' "$CODEX_DIR" "${member#codex/agents/}"
+      ;;
+    codex:codex/skills/deepwind-harness-prep/SKILL.md|\
+    codex:codex/skills/deepwind-harness-planner/SKILL.md|\
+    codex:codex/skills/deepwind-harness-coordinator/SKILL.md|\
+    codex:codex/skills/deepwind-harness-discipline/SKILL.md)
+      printf '%s/skills/%s\n' "$CODEX_DIR" "${member#codex/skills/}"
       ;;
     codex:LICENSE|codex:VERSION)
       printf '%s/share/codex/%s\n' "$INSTALL_DIR" "$member"
