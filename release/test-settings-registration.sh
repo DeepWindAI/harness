@@ -9,7 +9,7 @@
 #   never fail, so the "C may run when A is true" caveat does not apply here).
 # SC2034: TARGET/SKIP_HOOKS/MUTATION_COUNT are consumed by the sourced lib functions.
 # shellcheck disable=SC2015,SC2034
-set -uo pipefail
+set -euo pipefail
 IFS=$'\n\t'
 
 ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
@@ -79,7 +79,7 @@ jq -e '.hooks.PostToolUse[0].matcher == "Edit"' "$SETTINGS" >/dev/null 2>&1 && o
 echo "4. unparseable settings.json is not clobbered"
 setup
 printf '%s' 'not json {{{' > "$SETTINGS"
-merge_gate_registration_status; rc=$?
+rc=0; merge_gate_registration_status || rc=$?
 [ "$rc" = "2" ] && ok "status=2 (manual)" || no "wrong status $rc for unparseable"
 register_merge_gate_hook >/dev/null 2>&1
 [ "$(cat "$SETTINGS")" = 'not json {{{' ] && ok "left untouched" || no "clobbered a bad settings.json"
@@ -88,7 +88,7 @@ echo "5. symlinked settings.json is skipped"
 setup
 printf '{}' > "$HOME/real-settings.json"
 ln -s "$HOME/real-settings.json" "$SETTINGS"
-merge_gate_registration_status; rc=$?
+rc=0; merge_gate_registration_status || rc=$?
 [ "$rc" = "2" ] && ok "status=2 for symlink" || no "wrong status $rc for symlink"
 register_merge_gate_hook >/dev/null 2>&1
 [ -L "$SETTINGS" ] && ok "symlink not replaced" || no "symlink clobbered"
@@ -96,20 +96,20 @@ register_merge_gate_hook >/dev/null 2>&1
 echo "6. skip-hooks and hook-not-in-plan suppress registration"
 setup
 SKIP_HOOKS=1
-merge_gate_registration_status; rc=$?
+rc=0; merge_gate_registration_status || rc=$?
 [ "$rc" = "1" ] && ok "skip-hooks -> no-op" || no "skip-hooks not honored (status $rc)"
 setup
 : > "$PLAN_FILE"
-merge_gate_registration_status; rc=$?
+rc=0; merge_gate_registration_status || rc=$?
 [ "$rc" = "1" ] && ok "hook-not-in-plan -> no-op" || no "registered without hook in plan (status $rc)"
 
 echo "7. check/dry-run reporting"
 setup
-check_merge_gate_registration >/dev/null 2>&1; rc=$?
+rc=0; check_merge_gate_registration >/dev/null 2>&1 || rc=$?
 [ "$rc" = "1" ] && ok "check reports drift when unregistered" || no "check missed drift"
 print_merge_gate_plan 2>/dev/null | grep -q register && ok "dry-run prints a register line" || no "dry-run missing register line"
 register_merge_gate_hook >/dev/null 2>&1
-check_merge_gate_registration >/dev/null 2>&1; rc=$?
+rc=0; check_merge_gate_registration >/dev/null 2>&1 || rc=$?
 [ "$rc" = "0" ] && ok "check clean after registration" || no "check still drifts"
 
 echo "8. rollback restores the prior settings.json"

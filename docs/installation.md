@@ -120,3 +120,11 @@ request's base branch and always protects its own machinery. A repository with n
 policy file falls back to a conservative default. `--skip-hooks` omits the hook and
 its registration; the helper scripts are still installed. `--dry-run` and `--check`
 report whether the hook would be, or is, registered.
+
+The hook prefers a repository-vendored `scripts/git/check-sensitive-review.sh` over
+the installed copy, so a repository can ship a richer policy. That means when you
+approve a `gh pr merge` in a cloned repository, the hook runs that repository's
+script with your privileges — a repository-controlled surface, though a hostile
+repository could already ship a no-op hook, so this grants it nothing it does not
+already have. To pin the installed copy regardless of the repository, set
+`DEEPWIND_CHECK_SENSITIVE` to its path.

@@ -56,9 +56,13 @@ merge_gate_registration_status() {
 }
 
 # Print a plan line describing the settings.json disposition (dry-run parity with print_plan).
+# merge_gate_registration_status returns non-zero for the normal no-op/manual dispositions,
+# so it MUST be called in a tested context (`|| ...`) — a bare call would abort the whole
+# installer under `set -euo pipefail` before $? is read.
 print_merge_gate_plan() {
-  merge_gate_registration_status
-  case "$?" in
+  mgp_status=0
+  merge_gate_registration_status || mgp_status=$?
+  case "$mgp_status" in
     0) printf '%-9s %-8s %s\n' claude register "$(merge_gate_settings_file) (PreToolUse[Bash] merge-guard)" ;;
     2) printf '%-9s %-8s %s\n' claude manual "$(merge_gate_settings_file) (unparseable — register merge-guard by hand)" ;;
     *) : ;;
@@ -67,9 +71,11 @@ print_merge_gate_plan() {
 }
 
 # Report settings-registration drift for check_plan. Returns 1 (drift) if action needed.
+# Same errexit-safety requirement as above — capture status via `|| ...`, never bare.
 check_merge_gate_registration() {
-  merge_gate_registration_status
-  case "$?" in
+  cmr_status=0
+  merge_gate_registration_status || cmr_status=$?
+  case "$cmr_status" in
     0) printf 'drift: %s (register merge-guard PreToolUse[Bash] hook)\n' "$(merge_gate_settings_file)"; return 1 ;;
     2) printf 'drift: %s (unparseable settings.json — register merge-guard by hand)\n' "$(merge_gate_settings_file)"; return 1 ;;
     *) return 0 ;;
@@ -80,8 +86,12 @@ check_merge_gate_registration() {
 # Must be called from apply_transaction after JOURNAL_FILE/BACKUP_DIR/MUTATION_COUNT
 # are initialised and before TRANSACTION_COMMITTED, so a later failure rolls it back.
 register_merge_gate_hook() {
-  merge_gate_registration_status
-  reg_status=$?
+  # Tested context (`|| ...`) is REQUIRED: merge_gate_registration_status returns non-zero
+  # for the common dispositions (already registered, --skip-hooks, non-claude target,
+  # unparseable settings.json). A bare call would trip `set -e` and abort + roll back the
+  # entire install before $? is read — including on every idempotent re-run / upgrade.
+  reg_status=0
+  merge_gate_registration_status || reg_status=$?
   if [ "$reg_status" -eq 2 ]; then
     warn "settings.json is not mergeable JSON; skipping merge-guard hook registration (register it by hand)"
     return 0
