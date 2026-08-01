@@ -5,6 +5,11 @@
 # signal (approving review or reviewed:code label). Delegates the decision to
 # check-sensitive-review.sh (shared with guarded-merge.sh).
 #
+# CANONICAL COPY — kept byte-identical between pm-33-core (.claude/hooks/) and the
+# DeepWind harness installer bundle (DeepWindAI/harness payload/hooks/). Edit the
+# pm-33-core copy, then run scripts/git/sync-merge-gate.sh --write to mirror it into
+# the bundle; scripts/git/sync-merge-gate.sh --check (CI) fails on drift.
+#
 # Why this exists
 #   PR #1045 (pm-33-core) self-merged 34.6k lines (an "agent-executes-on-user-machines"
 #   feature) with reviews=0. Branch protection can't enforce review on a private
@@ -18,7 +23,7 @@
 #   - Advisory-safe: any tooling error (no gh, undeterminable PR, no check script) →
 #     exit 0, never blocks a merge on infra failure.
 #
-# Disable: rm ~/.claude/hooks/pre-bash-merge-guard.sh   Quiet-bypass: MERGE_GUARD=0
+# Disable: remove this hook file. Quiet-bypass: MERGE_GUARD=0
 set -euo pipefail
 
 [ "${MERGE_GUARD:-1}" = "0" ] && exit 0
@@ -67,7 +72,7 @@ done
 
 # Resolve check-sensitive-review.sh. Precedence:
 #   1. explicit override (DEEPWIND_CHECK_SENSITIVE),
-#   2. a repo-vendored copy (pm-33-core-style scripts/git/),
+#   2. a repo-vendored copy (this repo's scripts/git/),
 #   3. the globally-installed DeepWind bundle copy (~/.deepwind/bin, or DEEPWIND_BIN_DIR).
 # Absent everywhere → nothing to enforce (fail open). This lets the same hook work both
 # in a repo that vendors the gate and on a machine where only the bundle is installed.
