@@ -741,6 +741,16 @@ rollback_transaction() {
       T)
         rm -f "$destination" || ROLLBACK_INCOMPLETE=1
         ;;
+      R)
+        # Retired plugin aliases have no current destination. Restore one only
+        # when a failed transaction did not create anything in its place.
+        if [ ! -e "$destination" ] && [ ! -L "$destination" ] \
+          && mv "$backup" "$destination"; then
+          :
+        else
+          ROLLBACK_INCOMPLETE=1
+        fi
+        ;;
     esac
   done < "$reverse_journal"
   if [ "$ROLLBACK_INCOMPLETE" -ne 0 ]; then
@@ -748,6 +758,41 @@ rollback_transaction() {
     RETAIN_WORK_DIR=1
   fi
   return 0
+}
+
+retired_codex_plugin_skill_path() {
+  case "$1" in
+    "$CODEX_MARKETPLACE_DIR"/plugins/deepwind-harness/skills/harness-prep|\
+    "$CODEX_MARKETPLACE_DIR"/plugins/deepwind-harness/skills/harness-planner|\
+    "$CODEX_MARKETPLACE_DIR"/plugins/deepwind-harness/skills/harness-coordinator|\
+    "$CODEX_MARKETPLACE_DIR"/plugins/deepwind-harness/skills/harness-discipline)
+      return 0
+      ;;
+    *) return 1 ;;
+  esac
+}
+
+retired_codex_plugin_skill_file() {
+  retired_codex_plugin_skill_path "${1%/SKILL.md}"
+}
+
+retire_codex_plugin_skill_aliases() {
+  # Releases before the formal catalog placed unprefixed aliases inside the
+  # plugin. Retire only those exact installer-owned directories, never a
+  # wildcard or a user-provided skill, so upgrades expose every skill once.
+  for retired_name in harness-prep harness-planner harness-coordinator harness-discipline; do
+    retired_path="$CODEX_MARKETPLACE_DIR/plugins/deepwind-harness/skills/$retired_name"
+    retired_codex_plugin_skill_path "$retired_path" \
+      || die "unsafe retired Codex plugin skill path"
+    [ ! -L "$retired_path" ] || die "symlink in retired Codex plugin skill path: $retired_path"
+    [ ! -e "$retired_path" ] || {
+      [ -d "$retired_path" ] || die "retired Codex plugin skill is not a directory: $retired_path"
+      retired_backup="$BACKUP_DIR/retired-codex-skill-$retired_name"
+      mv "$retired_path" "$retired_backup" \
+        || die "cannot retire obsolete Codex plugin skill: $retired_name"
+      printf 'R\t%s\t%s\t1\n' "$retired_path" "$retired_backup" >> "$JOURNAL_FILE"
+    }
+  done
 }
 
 install_one_file() {
@@ -822,6 +867,7 @@ build_next_state() {
   : > "$next_state"
   if [ -f "$STATE_FILE" ]; then
     while IFS='	' read -r retained_digest retained_path; do
+      retired_codex_plugin_skill_file "$retained_path" && continue
       if ! awk -F '	' -v wanted="$retained_path" \
         '$3 == wanted { found=1 } END { exit !found }' "$PLAN_FILE"; then
         printf '%s\t%s\n' "$retained_digest" "$retained_path" >> "$next_state"
@@ -855,6 +901,10 @@ apply_transaction() {
   : > "$PENDING_FORCE_BACKUPS"
   MUTATION_COUNT=0
   last_target=
+
+  if target_selected codex; then
+    retire_codex_plugin_skill_aliases
+  fi
 
   while IFS='	' read -r plan_target_name source_path destination new_digest action; do
     if [ "$plan_target_name" != "$last_target" ]; then

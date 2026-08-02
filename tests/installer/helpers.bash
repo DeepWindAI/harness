@@ -29,6 +29,7 @@ make_fixture_release() {
     "$FIXTURE_RELEASE/claude/skills/deepwind-harness-prep" \
     "$FIXTURE_RELEASE/codex/.agents/plugins" \
     "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin" \
+    "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/skills/deepwind-harness-prep" \
     "$FIXTURE_RELEASE/codex/codex/agents"
   printf 'fixture trusted keyring\n' > "$FIXTURE_ROOT/test-keyring.gpg"
   bash "$TEST_ROOT/release/build-installer.sh" \
@@ -60,6 +61,8 @@ make_fixture_release() {
   printf 'claude-alias-skill-v1\n' > "$FIXTURE_RELEASE/claude/skills/deepwind-harness-prep/SKILL.md"
   printf '{"name":"deepwind-harness"}\n' \
     > "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin/plugin.json"
+  printf 'codex-formal-skill-v1\n' \
+    > "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/skills/deepwind-harness-prep/SKILL.md"
   printf '{"name":"deepwind","plugins":[]}\n' \
     > "$FIXTURE_RELEASE/codex/.agents/plugins/marketplace.json"
   while IFS= read -r role; do

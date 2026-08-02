@@ -28,6 +28,16 @@ run_fixture_installer >/dev/null
 [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/.agents/plugins/marketplace.json" ] \
   || fail 'default target did not install Codex marketplace catalog'
 
+# An upgrade must remove only the four historical unprefixed aliases formerly
+# included inside the plugin. The formal catalog remains intact.
+mkdir -p "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/skills/harness-prep"
+printf 'legacy alias\n' > "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/skills/harness-prep/SKILL.md"
+run_fixture_installer --force >/dev/null
+[ ! -e "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/skills/harness-prep" ] \
+  || fail 'upgrade retained obsolete unprefixed Codex plugin alias'
+[ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/skills/deepwind-harness-prep/SKILL.md" ] \
+  || fail 'upgrade removed the formal Codex plugin skill'
+
 remove_fixture_release
 make_fixture_release
 if run_fixture_installer --target invalid >/dev/null 2>&1; then
