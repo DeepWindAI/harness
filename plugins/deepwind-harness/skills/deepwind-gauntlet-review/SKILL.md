@@ -1,5 +1,5 @@
 ---
-name: gauntlet-review
+name: deepwind-gauntlet-review
 description: Review a proposed multi-workstream engineering plan before implementation. Use for adversarial architecture, security, data, performance, operational, and testability review; consolidate evidence-backed findings and require fixes for blockers before execution.
 ---
 

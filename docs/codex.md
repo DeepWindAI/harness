@@ -10,15 +10,16 @@ The Codex target installs a release-contained plugin marketplace under
 - `~/.codex/agents/harness-planner.toml`
 - `~/.codex/agents/security-auditor.toml`
 
-It also installs the four reusable `deepwind-harness-*` skill aliases in both
-`~/.codex/skills` and `~/.agents/skills`. Those shared local roots let Codex
-and compatible agents discover the same release-provided harness skills from
-any repository; the aliases are not copied into each project.
+The enabled plugin is the only Codex skill surface. It bundles five formal
+`deepwind-*` workflows, including `deepwind-gauntlet-review`; the installer
+does not copy them into `~/.codex/skills`, `~/.agents/skills`, or repositories.
+That prevents duplicate skill discovery and makes plugin versioning the single
+Codex upgrade path.
 
-The plugin bundle contains workflow skills only. It does not contain OAuth
-credentials, hooks, applications, MCP servers, or a personal marketplace
-configuration. The managed marketplace and plugin live together below the
-verified release root so an upgrade can replace them atomically.
+The plugin bundle contains workflow skills and the public DeepWind MCP endpoint.
+It does not contain OAuth credentials, hooks, applications, or a personal
+marketplace configuration. The managed marketplace and plugin live together
+below the verified release root so an upgrade can replace them atomically.
 
 Install only the Codex target:
 
@@ -55,7 +56,7 @@ does not enable it during an ordinary install. `--check` reports `enabled`,
 `not-enabled`, `outdated`, or `conflict` and gives the corresponding opt-in or
 repair action without changing Codex state.
 
-## Optional staging OAuth
+## Optional DeepWind MCP OAuth
 
 MCP configuration is a separate interactive action. It is never performed by
 the default dual-target install. To register the staging server after Codex
@@ -66,8 +67,8 @@ curl -fsSL https://deepwind.ai/install | bash -s -- --target codex --configure-m
 ```
 
 Type the exact confirmation `yes` when prompted. Only after that confirmation
-does the installer run fixed Codex commands for `deepwind-staging` at
-`https://dev.deepwind.ai/mcp`. It suppresses their output, never reads or copies
+does the installer run fixed Codex commands for `deepwind` at
+`https://app.deepwind.ai/mcp`. It suppresses their output, never reads or copies
 `~/.mcp-auth`, and does not invoke DeepWind data tools.
 
 If the terminal is not interactive, Codex is unavailable, consent is not
@@ -78,7 +79,7 @@ when you are ready.
 ## Doctor results
 
 The installer’s doctor is advisory and non-fatal. It makes one local
-`codex mcp get deepwind-staging` status request and emits a short JSON status;
+`codex mcp get deepwind` status request and emits a short JSON status;
 it does not authenticate, retry, read token files, or call a DeepWind data tool.
 
 Possible statuses include `configured`, `not-configured`, `oauth-required`,

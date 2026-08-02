@@ -19,10 +19,10 @@ run_fixture_installer >/dev/null
   || fail 'default target did not install Claude'
 [ -f "$FIXTURE_HOME/.claude/skills/deepwind-harness-prep/SKILL.md" ] \
   || fail 'default target did not install the Claude harness skill alias'
-[ -f "$FIXTURE_HOME/.codex/skills/deepwind-harness-prep/SKILL.md" ] \
-  || fail 'default target did not install the Codex harness skill alias'
-[ -f "$FIXTURE_HOME/.agents/skills/deepwind-harness-prep/SKILL.md" ] \
-  || fail 'default target did not install the shared agent harness skill alias'
+[ ! -e "$FIXTURE_HOME/.codex/skills/deepwind-harness-prep/SKILL.md" ] \
+  || fail 'Codex target installed an overlapping global skill alias'
+[ ! -e "$FIXTURE_HOME/.agents/skills/deepwind-harness-prep/SKILL.md" ] \
+  || fail 'Codex target installed an overlapping shared-agent skill alias'
 [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/plugins/deepwind-harness/.codex-plugin/plugin.json" ] \
   || fail 'default target did not install Codex'
 [ -f "$FIXTURE_HOME/.deepwind/install/share/codex-marketplace/.agents/plugins/marketplace.json" ] \

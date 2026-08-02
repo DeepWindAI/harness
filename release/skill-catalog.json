@@ -1,0 +1,30 @@
+{
+  "formatVersion": 1,
+  "skills": [
+    {
+      "name": "deepwind-harness-prep",
+      "claudeSource": "skills/harness-prep/SKILL.md",
+      "codexSource": "codex/skill-sources/harness-prep/SKILL.md"
+    },
+    {
+      "name": "deepwind-harness-planner",
+      "claudeSource": "skills/harness-planner/SKILL.md",
+      "codexSource": "codex/skill-sources/harness-planner/SKILL.md"
+    },
+    {
+      "name": "deepwind-harness-coordinator",
+      "claudeSource": "skills/harness-coordinator/SKILL.md",
+      "codexSource": "codex/skill-sources/harness-coordinator/SKILL.md"
+    },
+    {
+      "name": "deepwind-harness-discipline",
+      "claudeSource": "skills/harness-discipline/SKILL.md",
+      "codexSource": "codex/skill-sources/harness-discipline/SKILL.md"
+    },
+    {
+      "name": "deepwind-gauntlet-review",
+      "claudeSource": "skills/gauntlet-review/SKILL.md",
+      "codexSource": "skills/gauntlet-review/SKILL.md"
+    }
+  ]
+}

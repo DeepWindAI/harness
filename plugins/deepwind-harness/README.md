@@ -1,7 +1,8 @@
 # DeepWind Harness for Codex
 
-This directory is a release-contained Codex plugin. It contains workflow skills only: no
-credentials, hooks, apps, or connection manifests.
+This directory is a release-contained Codex plugin. It contains five workflow
+skills and a public DeepWind MCP configuration; it contains no credentials,
+hooks, or bundled OAuth state.
 
 For public Plugins Directory submission material, including reviewer test cases,
 see [submission/README.md](submission/README.md).

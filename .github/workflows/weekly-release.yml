@@ -365,8 +365,8 @@ jobs:
           }
           BUILD_ARGS=()
           bash release/build-harness-skill-aliases.sh
-          git diff --exit-code -- skills/deepwind-harness-* \
-            codex/skills/deepwind-harness-* .agents/skills/deepwind-harness-* || {
+          git diff --exit-code -- skills/deepwind-* \
+            plugins/deepwind-harness/skills || {
             echo "generated DeepWind harness skill aliases are stale; run release/build-harness-skill-aliases.sh and commit the result" >&2
             exit 2
           }
@@ -374,7 +374,7 @@ jobs:
           # The Codex archive becomes part of this same signed contract only
           # after the Codex plugin and role pack exist (DW-003/DW-004).
           if [ -d plugins/deepwind-harness ] && [ -d codex/agents ]; then
-            build_target codex .agents/plugins/marketplace.json .agents/skills plugins/deepwind-harness codex/agents codex/skills LICENSE VERSION
+            build_target codex .agents/plugins/marketplace.json plugins/deepwind-harness codex/agents LICENSE VERSION
           fi
           bash release/scan-release-archives.sh "$ASSETS"/deepwind-harness-*.tar.gz
 
@@ -393,9 +393,9 @@ jobs:
           jq -e '
             .formatVersion == 1 and
             .channel == "staging" and
-            .displayName == "DeepWind staging" and
-            .endpoint.alias == "deepwind-staging" and
-            .endpoint.url == "https://dev.deepwind.ai/mcp" and
+            .displayName == "DeepWind" and
+            .endpoint.alias == "deepwind" and
+            .endpoint.url == "https://app.deepwind.ai/mcp" and
             .endpoint.transport == "streamable-http" and
             .endpoint.oauth == "interactive"
           ' "$CHANNEL_CONFIG" >/dev/null || {

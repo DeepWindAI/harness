@@ -41,23 +41,11 @@ map_destination() {
     codex:.agents/plugins/marketplace.json)
       printf '%s/.agents/plugins/marketplace.json\n' "$CODEX_MARKETPLACE_DIR"
       ;;
-    codex:.agents/skills/deepwind-harness-prep/SKILL.md|\
-    codex:.agents/skills/deepwind-harness-planner/SKILL.md|\
-    codex:.agents/skills/deepwind-harness-coordinator/SKILL.md|\
-    codex:.agents/skills/deepwind-harness-discipline/SKILL.md)
-      printf '%s/skills/%s\n' "$AGENTS_DIR" "${member#.agents/skills/}"
-      ;;
     codex:codex/agents/frontend-developer.toml|\
     codex:codex/agents/harness-coordinator.toml|\
     codex:codex/agents/harness-planner.toml|\
     codex:codex/agents/security-auditor.toml)
       printf '%s/agents/%s\n' "$CODEX_DIR" "${member#codex/agents/}"
-      ;;
-    codex:codex/skills/deepwind-harness-prep/SKILL.md|\
-    codex:codex/skills/deepwind-harness-planner/SKILL.md|\
-    codex:codex/skills/deepwind-harness-coordinator/SKILL.md|\
-    codex:codex/skills/deepwind-harness-discipline/SKILL.md)
-      printf '%s/skills/%s\n' "$CODEX_DIR" "${member#codex/skills/}"
       ;;
     codex:LICENSE|codex:VERSION)
       printf '%s/share/codex/%s\n' "$INSTALL_DIR" "$member"

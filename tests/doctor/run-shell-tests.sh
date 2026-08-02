@@ -27,14 +27,14 @@ printf '%s\n' \
   '#!/usr/bin/env bash' \
   'printf "%s\n" "$*" >> "$CODEX_CALL_LOG"' \
   'case "$*" in' \
-  '  "mcp add deepwind-staging --url https://dev.deepwind.ai/mcp")' \
+  '  "mcp add deepwind --url https://app.deepwind.ai/mcp")' \
   '    printf "%s\n" "${FAKE_CODEX_ADD_TEXT:-added token=ADD-SECRET}"' \
   '    exit "${FAKE_CODEX_ADD_EXIT:-0}" ;;' \
-  '  "mcp login deepwind-staging")' \
+  '  "mcp login deepwind")' \
   '    printf "%s\n" "${FAKE_CODEX_LOGIN_TEXT:-oauth token=LOGIN-SECRET}" >&2' \
   '    exit "${FAKE_CODEX_LOGIN_EXIT:-0}" ;;' \
-  '  "mcp get deepwind-staging")' \
-  '    printf "%s\n" "${FAKE_CODEX_TRANSCRIPT:-enabled streamable_http https://dev.deepwind.ai/mcp}"' \
+  '  "mcp get deepwind")' \
+  '    printf "%s\n" "${FAKE_CODEX_TRANSCRIPT:-enabled streamable_http https://app.deepwind.ai/mcp}"' \
   '    exit "${FAKE_CODEX_GET_EXIT:-0}" ;;' \
   '  *) printf "unexpected argv\n" >&2; exit 91 ;;' \
   'esac' > "$TMP/bin/codex"
@@ -43,7 +43,7 @@ chmod 755 "$TMP/bin/codex"
 MANIFEST_FILE="$TMP/manifest.json"
 export MANIFEST_FILE
 printf '%s\n' \
-  '{"channel":"staging","endpoint":{"alias":"deepwind-staging","url":"https://dev.deepwind.ai/mcp"}}' \
+  '{"channel":"staging","endpoint":{"alias":"deepwind","url":"https://app.deepwind.ai/mcp"}}' \
   > "$MANIFEST_FILE"
 
 : > "$CODEX_CALL_LOG"
@@ -78,9 +78,9 @@ fi
   interactive_tty() { return 0; }
   PATH="$TMP/bin:$PATH" configure_codex_mcp staging yes
 ) > "$TMP/configured.out" 2>&1 || fail 'explicit staging configuration failed'
-[ "$(sed -n '1p' "$CODEX_CALL_LOG")" = 'mcp add deepwind-staging --url https://dev.deepwind.ai/mcp' ] \
+[ "$(sed -n '1p' "$CODEX_CALL_LOG")" = 'mcp add deepwind --url https://app.deepwind.ai/mcp' ] \
   || fail 'Codex add argv was not fixed to the allowlisted staging endpoint'
-[ "$(sed -n '2p' "$CODEX_CALL_LOG")" = 'mcp login deepwind-staging' ] \
+[ "$(sed -n '2p' "$CODEX_CALL_LOG")" = 'mcp login deepwind' ] \
   || fail 'Codex login argv was not fixed to the staging alias'
 [ "$(wc -l < "$CODEX_CALL_LOG" | tr -d '[:space:]')" -eq 2 ] \
   || fail 'configuration made unexpected Codex calls'
@@ -101,7 +101,7 @@ if rg -q 'LOGIN-SECRET|token=|workspace' "$TMP/login-failure.out"; then
 fi
 
 printf '%s\n' \
-  '{"channel":"staging","endpoint":{"alias":"deepwind-staging","url":"https://attacker.example/mcp"}}' \
+  '{"channel":"staging","endpoint":{"alias":"deepwind","url":"https://attacker.example/mcp"}}' \
   > "$MANIFEST_FILE"
 : > "$CODEX_CALL_LOG"
 if (
@@ -112,7 +112,7 @@ if (
 fi
 [ ! -s "$CODEX_CALL_LOG" ] || fail 'Codex was invoked for a non-allowlisted endpoint'
 printf '%s\n' \
-  '{"channel":"staging","endpoint":{"alias":"deepwind-staging","url":"https://dev.deepwind.ai/mcp"}}' \
+  '{"channel":"staging","endpoint":{"alias":"deepwind","url":"https://app.deepwind.ai/mcp"}}' \
   > "$MANIFEST_FILE"
 
 : > "$CODEX_CALL_LOG"
@@ -123,7 +123,7 @@ rg -q '"status":"no-workspace"' "$TMP/no-workspace.out" \
 if rg -q 'SecretCorp|WORKSPACE-SECRET|token=' "$TMP/no-workspace.out"; then
   fail 'doctor leaked workspace or transcript data'
 fi
-[ "$(cat "$CODEX_CALL_LOG")" = 'mcp get deepwind-staging' ] \
+[ "$(cat "$CODEX_CALL_LOG")" = 'mcp get deepwind' ] \
   || fail 'doctor made more than one or a non-status Codex call'
 
 : > "$CODEX_CALL_LOG"
@@ -152,9 +152,9 @@ fi
 jq -e '
   .formatVersion == 1 and
   .channel == "staging" and
-  .displayName == "DeepWind staging" and
-  .endpoint.alias == "deepwind-staging" and
-  .endpoint.url == "https://dev.deepwind.ai/mcp" and
+  .displayName == "DeepWind" and
+  .endpoint.alias == "deepwind" and
+  .endpoint.url == "https://app.deepwind.ai/mcp" and
   .endpoint.transport == "streamable-http" and
   .endpoint.oauth == "interactive"
 ' "$ROOT/config/channels/staging.json" >/dev/null \

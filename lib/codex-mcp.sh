@@ -3,8 +3,8 @@
 # OAuth token storage and never accepts an endpoint from an unsigned source.
 
 DEEPWIND_STAGING_CHANNEL=staging
-DEEPWIND_STAGING_ALIAS=deepwind-staging
-DEEPWIND_STAGING_URL=https://dev.deepwind.ai/mcp
+DEEPWIND_STAGING_ALIAS=deepwind
+DEEPWIND_STAGING_URL=https://app.deepwind.ai/mcp
 
 _mcp_info() {
   printf '%s\n' "$*"
@@ -59,17 +59,17 @@ configure_codex_mcp() {
     return 5
   fi
 
-  _mcp_info 'Configuring DeepWind staging for the interactive Codex coordinator.'
+  _mcp_info 'Configuring DeepWind for the interactive Codex coordinator.'
   if ! codex mcp add "$DEEPWIND_STAGING_ALIAS" \
     --url "$DEEPWIND_STAGING_URL" >/dev/null 2>&1; then
     _mcp_warn 'Codex could not register the DeepWind staging connector; installed files are unchanged.'
     return 6
   fi
   if ! codex mcp login "$DEEPWIND_STAGING_ALIAS" >/dev/null 2>&1; then
-    _mcp_warn 'DeepWind staging OAuth did not complete; rerun with --configure-mcp when ready.'
+    _mcp_warn 'DeepWind OAuth did not complete; rerun with --configure-mcp when ready.'
     return 7
   fi
-  _mcp_info 'DeepWind staging MCP is registered for this interactive Codex user.'
+  _mcp_info 'DeepWind MCP is registered for this interactive Codex user.'
 }
 
 maybe_configure_codex_mcp() {
@@ -81,10 +81,10 @@ maybe_configure_codex_mcp() {
 
   printf '%s\n' \
     'DeepWind MCP channel: staging' \
-    'Endpoint: https://dev.deepwind.ai/mcp' \
+    'Endpoint: https://app.deepwind.ai/mcp' \
     'OAuth is stored and managed by Codex for this interactive user only.' \
     > /dev/tty
-  printf 'Type yes to register and authenticate DeepWind staging: ' > /dev/tty
+  printf 'Type yes to register and authenticate DeepWind: ' > /dev/tty
   onboarding_consent=
   IFS= read -r onboarding_consent < /dev/tty || onboarding_consent=
   configure_codex_mcp "$onboarding_channel" "$onboarding_consent"

@@ -1,10 +1,10 @@
 {
   "formatVersion": 1,
   "channel": "staging",
-  "displayName": "DeepWind staging",
+  "displayName": "DeepWind",
   "endpoint": {
-    "alias": "deepwind-staging",
-    "url": "https://dev.deepwind.ai/mcp",
+    "alias": "deepwind",
+    "url": "https://app.deepwind.ai/mcp",
     "transport": "streamable-http",
     "oauth": "interactive"
   }

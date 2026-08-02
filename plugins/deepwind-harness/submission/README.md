@@ -6,16 +6,18 @@ plugin rooted one directory above this document.
 
 ## Listing summary
 
-**DeepWind Harness** is a skills-only plugin for evidence-gated planning and
-execution of complex engineering work. It provides four workflows: preparation,
-planning, coordination, and engineering discipline. It is intended for
+**DeepWind Harness** is a skills-plus-MCP plugin for evidence-gated planning
+and execution of complex engineering work. It provides five workflows:
+preparation, planning, adversarial gauntlet review, coordination, and
+engineering discipline. It is intended for
 multi-workstream work that benefits from explicit quality gates, independent
 review, isolated specialist execution, and a recorded evidence trail.
 
-The plugin does not include an MCP server, connector, app, hook, OAuth flow,
-credential store, telemetry, or network tool. It gives Codex reusable
-instructions; filesystem and command permissions remain controlled by the
-active Codex host and its approval policy.
+The plugin bundles the public MCP endpoint `https://app.deepwind.ai/mcp` and
+five static workflows. It never includes OAuth tokens, a credential store,
+telemetry, or a background process. The host owns authentication and tool
+approval; filesystem and command permissions remain controlled by its approval
+policy.
 
 ## Submission fields
 
@@ -31,7 +33,7 @@ active Codex host and its approval policy.
 | Source repository | https://github.com/DeepWindAI/harness |
 | License | MIT |
 | Capabilities | Read, Write |
-| Authentication | None |
+| Authentication | User-managed OAuth when MCP tools are enabled |
 
 The manifest carries the same public URLs and ships DeepWind icon and light/dark
 logo assets. The marketplace entry is retained for local and team testing; it
@@ -44,15 +46,15 @@ is not a claim that the plugin has already been listed publicly.
 2. Enable the plugin in a new Codex session.
 3. Use the self-contained prompts in [test-cases.md](test-cases.md). They need
    no account, private repository, API key, fixture service, or network access.
-4. Confirm that the plugin supplies workflow guidance only and does not expose
-   MCP tools, request credentials, or claim access to a DeepWind workspace.
+4. Confirm that skills activate once, and that MCP tool discovery/authentication
+   uses the public endpoint without exposing credentials in the package.
 
 ## Draft release notes
 
-Initial public listing of DeepWind Harness. The plugin packages four
-skills-only workflows for preparation, planning, coordination, and delivery
-discipline. It adds no external connector, MCP server, OAuth integration, or
-background process.
+Initial public listing of DeepWind Harness. The plugin packages five workflows
+for preparation, planning, gauntlet review, coordination, and delivery
+discipline, plus the public DeepWind MCP endpoint. OAuth remains host-managed;
+the package stores no credentials or background process.
 
 ## Publisher checklist
 

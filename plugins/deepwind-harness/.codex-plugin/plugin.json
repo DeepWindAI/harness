@@ -1,7 +1,7 @@
 {
   "name": "deepwind-harness",
-  "version": "1.1.9",
-  "description": "Evidence-gated planning and execution workflows for complex engineering work.",
+  "version": "1.1.10",
+  "description": "Evidence-gated engineering workflows and DeepWind MCP access for complex work.",
   "author": {
     "name": "DeepWind",
     "url": "https://deepwind.ai/"
@@ -17,10 +17,11 @@
     "tdd"
   ],
   "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "DeepWind Harness",
-    "shortDescription": "Evidence-gated planning for complex engineering work.",
-    "longDescription": "Plan and coordinate multi-workstream engineering work with discovery, explicit quality gates, adversarial review, isolated specialists, and evidence-based delivery. This skills-only plugin does not connect to external services or manage credentials.",
+    "shortDescription": "Evidence-gated engineering",
+    "longDescription": "Plan, adversarially review, and coordinate multi-workstream engineering with discovery, explicit quality gates, isolated specialists, and evidence-based delivery. The plugin also bundles the DeepWind MCP endpoint; each user authenticates through the supported host flow and controls tool approvals.",
     "developerName": "DeepWind",
     "category": "Developer Tools",
     "capabilities": [

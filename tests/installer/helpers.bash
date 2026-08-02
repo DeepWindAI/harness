@@ -28,10 +28,8 @@ make_fixture_release() {
     "$FIXTURE_RELEASE/claude/skills/harness-prep" \
     "$FIXTURE_RELEASE/claude/skills/deepwind-harness-prep" \
     "$FIXTURE_RELEASE/codex/.agents/plugins" \
-    "$FIXTURE_RELEASE/codex/.agents/skills/deepwind-harness-prep" \
     "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin" \
-    "$FIXTURE_RELEASE/codex/codex/agents" \
-    "$FIXTURE_RELEASE/codex/codex/skills/deepwind-harness-prep"
+    "$FIXTURE_RELEASE/codex/codex/agents"
   printf 'fixture trusted keyring\n' > "$FIXTURE_ROOT/test-keyring.gpg"
   bash "$TEST_ROOT/release/build-installer.sh" \
     "$FIXTURE_INSTALLER" "$FIXTURE_ROOT/test-keyring.gpg"
@@ -60,8 +58,6 @@ make_fixture_release() {
   printf 'claude-agent-v1\n' > "$FIXTURE_RELEASE/claude/agents/harness-coordinator.md"
   printf 'claude-skill-v1\n' > "$FIXTURE_RELEASE/claude/skills/harness-prep/SKILL.md"
   printf 'claude-alias-skill-v1\n' > "$FIXTURE_RELEASE/claude/skills/deepwind-harness-prep/SKILL.md"
-  printf 'codex-agents-alias-skill-v1\n' > "$FIXTURE_RELEASE/codex/.agents/skills/deepwind-harness-prep/SKILL.md"
-  printf 'codex-alias-skill-v1\n' > "$FIXTURE_RELEASE/codex/codex/skills/deepwind-harness-prep/SKILL.md"
   printf '{"name":"deepwind-harness"}\n' \
     > "$FIXTURE_RELEASE/codex/plugins/deepwind-harness/.codex-plugin/plugin.json"
   printf '{"name":"deepwind","plugins":[]}\n' \
@@ -98,7 +94,7 @@ EOF
       version: "1.2.3",
       tag: "v1.2.3",
       channel: "staging",
-      endpoint: {alias: "deepwind-staging", url: "https://dev.deepwind.ai/mcp"},
+      endpoint: {alias: "deepwind", url: "https://app.deepwind.ai/mcp"},
       signing: {
         keyId: "fixture-key",
         notBefore: "2026-01-01T00:00:00Z",

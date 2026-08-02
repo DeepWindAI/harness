@@ -24,6 +24,7 @@ jq -e '
   (.description | length > 20) and
   .author.name == "DeepWind" and
   .skills == "./skills/" and
+  .mcpServers == "./.mcp.json" and
   .interface.displayName == "DeepWind Harness" and
   .interface.developerName == "DeepWind" and
   .interface.privacyPolicyURL == "https://deepwind.ai/privacy" and
@@ -34,7 +35,6 @@ jq -e '
   .interface.capabilities == ["Read", "Write"] and
   (.interface.defaultPrompt | length >= 1 and length <= 3) and
   (has("hooks") | not) and
-  (has("mcpServers") | not) and
   (has("apps") | not)
 ' "$PLUGIN/.codex-plugin/plugin.json" >/dev/null \
   || fail 'plugin manifest contract failed'
@@ -69,21 +69,24 @@ jq -e '
   .plugins[0].category == "Developer Tools"
 ' "$MARKETPLACE" >/dev/null || fail 'repo-local marketplace contract failed'
 
-expected_skills=$'harness-coordinator\nharness-discipline\nharness-planner\nharness-prep'
+expected_skills=$'deepwind-gauntlet-review\ndeepwind-harness-coordinator\ndeepwind-harness-discipline\ndeepwind-harness-planner\ndeepwind-harness-prep'
 actual_skills=$(
   find "$PLUGIN/skills" -mindepth 2 -maxdepth 2 -name SKILL.md -print \
     | sed -e "s#^$PLUGIN/skills/##" -e 's#/SKILL.md$##' \
     | LC_ALL=C sort
 )
-[ "$actual_skills" = "$expected_skills" ] || fail 'plugin must contain exactly four harness skills'
+[ "$actual_skills" = "$expected_skills" ] || fail 'plugin must contain exactly the catalogued DeepWind skills'
 
-for skill in harness-prep harness-planner harness-coordinator harness-discipline; do
+for skill in deepwind-harness-prep deepwind-harness-planner deepwind-harness-coordinator deepwind-harness-discipline deepwind-gauntlet-review; do
   file="$PLUGIN/skills/$skill/SKILL.md"
   first_name=$(sed -n 's/^name: //p' "$file" | head -1)
   [ "$first_name" = "$skill" ] || fail "$skill has invalid frontmatter"
   rg -q '^description: .+' "$file" || fail "$skill has no description"
   rg -q '^## MCP boundary$' "$file" || fail "$skill has no explicit MCP boundary"
 done
+
+jq -e '.mcpServers.deepwind.url == "https://app.deepwind.ai/mcp"' "$PLUGIN/.mcp.json" >/dev/null \
+  || fail 'plugin MCP package does not use the public DeepWind endpoint'
 
 if rg -n 'Skill\(|Task\(|~/.claude|CLAUDECODE|Claude Code agent' "$PLUGIN/skills"; then
   fail 'Claude-only invocation syntax remains in Codex skills'
@@ -136,9 +139,12 @@ if rg -n '~/.agents/plugins/marketplace.json|personal marketplace' "$PLUGIN/READ
   fail 'plugin lifecycle must not write a personal marketplace'
 fi
 
-rg -q 'build_target codex .*\.agents/plugins/marketplace\.json .*\.agents/skills .*plugins/deepwind-harness .*codex/agents .*codex/skills' \
+rg -q 'build_target codex .*\.agents/plugins/marketplace\.json .*plugins/deepwind-harness .*codex/agents LICENSE VERSION' \
   "$ROOT/.github/workflows/weekly-release.yml" \
-  || fail 'Codex release archive does not contain marketplace, plugin, roles, and skill aliases together'
+  || fail 'Codex release archive does not contain the single plugin skill surface and roles'
+if rg -q 'codex/skills|\.agents/skills' "$ROOT/.github/workflows/weekly-release.yml"; then
+  fail 'Codex release archive must not include overlapping global skill aliases'
+fi
 rg -q '\.version = \$version' "$ROOT/.github/workflows/weekly-release.yml" \
   || fail 'release build does not align plugin semver with the immutable release'
 rg -q 'CODEX_MARKETPLACE_DIR' "$ROOT/lib/state.sh" \

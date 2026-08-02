@@ -35,19 +35,20 @@ under `~/deepwind-frameworks`. The Claude target also installs a merge-gate —
 hook registered in `~/.claude/settings.json` — that stops a coordinator from
 self-merging an unreviewed, security-sensitive pull request (see
 [installation](docs/installation.md#merge-gate)). Codex receives a release-contained plugin
-marketplace under `~/.deepwind/install/share/codex-marketplace`, four explicit
-role TOMLs under `~/.codex/agents`, and the `deepwind-harness-*` skill aliases
-under both `~/.codex/skills` and `~/.agents/skills`. The aliases make the
-release-provided harness skills available from every local repository without
-per-repository copies. The release manifest records every managed file; a
-modified file is preserved unless the user explicitly chooses `--force`.
+marketplace under `~/.deepwind/install/share/codex-marketplace` and four
+explicit role TOMLs under `~/.codex/agents`. Codex discovers the five formal
+`deepwind-*` workflows only through the enabled release-contained plugin, so
+the installer never duplicates them in `~/.codex/skills`, `~/.agents/skills`,
+or project directories. Claude receives its target-specific aliases under
+`~/.claude/skills`. The release manifest records every managed file; a modified
+file is preserved unless the user explicitly chooses `--force`.
 
 Codex plugin enablement is also explicit: add `--enable-codex-plugin` to the
 installer command to let the Codex CLI activate the verified release-contained
 marketplace and plugin.
 
 The installer does not configure MCP by default, including when both targets
-are selected. Optional Codex staging OAuth requires an interactive terminal,
+are selected. Optional Codex OAuth for `https://app.deepwind.ai/mcp` requires an interactive terminal,
 `--configure-mcp`, and the exact confirmation `yes`. It never copies or reads
 OAuth credentials. The interactive parent coordinator owns DeepWind MCP; child
 agents receive file-based skills and return proposed strategic updates instead

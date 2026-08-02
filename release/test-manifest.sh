@@ -52,8 +52,8 @@ chmod 755 "$TMP/deepwind-init-v1.2.3.sh"
 "$BUILD" \
   --version 1.2.3 \
   --channel staging \
-  --endpoint-alias deepwind-staging \
-  --endpoint-url https://dev.deepwind.ai/mcp \
+  --endpoint-alias deepwind \
+  --endpoint-url https://app.deepwind.ai/mcp \
   --key-id test-key \
   --not-before 2026-01-01T00:00:00Z \
   --not-after 2027-01-01T00:00:00Z \
@@ -64,8 +64,8 @@ chmod 755 "$TMP/deepwind-init-v1.2.3.sh"
   --output "$TMP/manifest-a.json"
 
 "$BUILD" \
-  --version 1.2.3 --channel staging --endpoint-alias deepwind-staging \
-  --endpoint-url https://dev.deepwind.ai/mcp --key-id test-key \
+  --version 1.2.3 --channel staging --endpoint-alias deepwind \
+  --endpoint-url https://app.deepwind.ai/mcp --key-id test-key \
   --not-before 2026-01-01T00:00:00Z --not-after 2027-01-01T00:00:00Z \
   --source-revision deadbeef \
   --bootstrap "$TMP/deepwind-init-v1.2.3.sh" \
@@ -84,7 +84,7 @@ jq -e --arg sha "$(sha256 "$TMP/deepwind-init-v1.2.3.sh")" \
       bytes: $bytes
     }
   ' "$TMP/manifest-a.json" >/dev/null || fail 'versioned bootstrap contract missing'
-jq -e '(.archives | length == 2) and (.endpoint.alias == "deepwind-staging")' "$TMP/manifest-a.json" >/dev/null || fail 'required manifest fields missing'
+jq -e '(.archives | length == 2) and (.endpoint.alias == "deepwind")' "$TMP/manifest-a.json" >/dev/null || fail 'required manifest fields missing'
 validate_schema "$TMP/manifest-a.json" >/dev/null \
   || fail 'generated manifest does not validate against the Draft 2020-12 schema'
 jq '.unexpected = true' "$TMP/manifest-a.json" > "$TMP/schema-invalid.json"
@@ -97,29 +97,29 @@ printf 'bad\n' > "$TMP/bad-file"
 create_traversal_archive
 mkdir -p "$TMP/duplicate"
 tar -C "$TMP/claude" -czf "$TMP/duplicate/deepwind-harness-claude-v1.2.3.tar.gz" agents/coordinator.md agents/coordinator.md
-expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind-staging \
-  --endpoint-url https://dev.deepwind.ai/mcp --key-id test-key \
+expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind \
+  --endpoint-url https://app.deepwind.ai/mcp --key-id test-key \
   --not-before 2026-01-01T00:00:00Z --not-after 2027-01-01T00:00:00Z \
   --source-revision deadbeef --bootstrap "$TMP/deepwind-init-v1.2.3.sh" \
   --archive "claude=$TMP/traversal.tar.gz" --output "$TMP/bad.json"
-expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind-staging \
-  --endpoint-url https://dev.deepwind.ai/mcp --key-id test-key \
+expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind \
+  --endpoint-url https://app.deepwind.ai/mcp --key-id test-key \
   --not-before 2026-01-01T00:00:00Z --not-after 2027-01-01T00:00:00Z \
   --source-revision deadbeef --bootstrap "$TMP/deepwind-init-v1.2.3.sh" \
   --archive "claude=$TMP/duplicate/deepwind-harness-claude-v1.2.3.tar.gz" --output "$TMP/bad.json"
-expect_fail "$BUILD" --version not-semver --channel staging --endpoint-alias deepwind-staging \
-  --endpoint-url https://dev.deepwind.ai/mcp --key-id test-key \
+expect_fail "$BUILD" --version not-semver --channel staging --endpoint-alias deepwind \
+  --endpoint-url https://app.deepwind.ai/mcp --key-id test-key \
   --not-before 2026-01-01T00:00:00Z --not-after 2027-01-01T00:00:00Z \
   --source-revision deadbeef --bootstrap "$TMP/deepwind-init-v1.2.3.sh" \
   --archive "claude=$TMP/deepwind-harness-claude-v1.2.3.tar.gz" --output "$TMP/bad.json"
-expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind-staging \
-  --endpoint-url https://dev.deepwind.ai/mcp --key-id '' \
+expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind \
+  --endpoint-url https://app.deepwind.ai/mcp --key-id '' \
   --not-before 2026-01-01T00:00:00Z --not-after 2027-01-01T00:00:00Z \
   --source-revision deadbeef --bootstrap "$TMP/deepwind-init-v1.2.3.sh" \
   --archive "claude=$TMP/deepwind-harness-claude-v1.2.3.tar.gz" --output "$TMP/bad.json"
 cp "$TMP/deepwind-init-v1.2.3.sh" "$TMP/deepwind-init.sh"
-expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind-staging \
-  --endpoint-url https://dev.deepwind.ai/mcp --key-id test-key \
+expect_fail "$BUILD" --version 1.2.3 --channel staging --endpoint-alias deepwind \
+  --endpoint-url https://app.deepwind.ai/mcp --key-id test-key \
   --not-before 2026-01-01T00:00:00Z --not-after 2027-01-01T00:00:00Z \
   --source-revision deadbeef --bootstrap "$TMP/deepwind-init.sh" \
   --archive "claude=$TMP/deepwind-harness-claude-v1.2.3.tar.gz" --output "$TMP/bad.json"
