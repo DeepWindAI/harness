@@ -92,6 +92,7 @@ main() {
       fi
       apply_transaction
       info "DeepWind $VERSION installed for target: $TARGET"
+      merge_gate_summary
       if [ "$ENABLE_CODEX_PLUGIN" -eq 1 ]; then
         enable_codex_plugin
       elif target_selected codex; then

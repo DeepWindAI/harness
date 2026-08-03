@@ -1065,7 +1065,24 @@ register_merge_gate_hook() {
     || { warn "merge-guard registration sanity check failed; skipping"; return 0; }
 
   install_one_file "$reg_merged" "$reg_settings" 0
-  info "registered merge-guard PreToolUse[Bash] hook in $reg_settings"
+  info "registered the merge-guard PreToolUse[Bash] hook in $reg_settings"
+}
+
+# Concise post-install note about the merge-gate (printed after "installed for target"
+# by the installer's main flow). Prints only when the gate is actually active — the
+# hook installed for the claude target and registered — so re-runs and --skip-hooks
+# installs that leave it off don't advertise it.
+merge_gate_summary() {
+  [ "${SKIP_HOOKS:-0}" -eq 0 ] || return 0
+  target_selected claude || return 0
+  mgs_settings=$(merge_gate_settings_file)
+  mgs_cmd=$(merge_gate_hook_command)
+  merge_gate_hook_registered "$mgs_settings" "$mgs_cmd" || return 0
+  info ""
+  info "Merge-gate active: blocks self-merging an unreviewed, security-sensitive PR."
+  info "  Sanctioned merge:   $BIN_DIR/guarded-merge.sh <PR>"
+  info "  Raw 'gh pr merge' is gated by the PreToolUse hook (bypass: MERGE_GUARD=0)."
+  info "  Each repo lists its sensitive paths in .deepwind/sensitive-paths (default if absent)."
 }
 
 # ---- lib/codex-plugin.sh ----
@@ -1496,6 +1513,7 @@ main() {
       fi
       apply_transaction
       info "DeepWind $VERSION installed for target: $TARGET"
+      merge_gate_summary
       if [ "$ENABLE_CODEX_PLUGIN" -eq 1 ]; then
         enable_codex_plugin
       elif target_selected codex; then
