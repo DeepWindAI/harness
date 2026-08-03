@@ -236,7 +236,9 @@ cmd_doctor() {
   if [[ -x "$mg_hook" ]]; then
     ok "merge-guard hook: present + executable"
     if [[ -f "$settings" ]] && command -v jq >/dev/null 2>&1; then
-      if jq -e --arg c "$mg_hook" \
+      if ! jq -e . "$settings" >/dev/null 2>&1; then
+        warn "merge-guard: $settings is not valid JSON — can't confirm registration (fix it, then re-run the installer)"
+      elif jq -e --arg c "$mg_hook" \
         '[ (.hooks.PreToolUse // [])[]? | (.hooks // [])[]? | .command? ] | any(. == $c)' \
         "$settings" >/dev/null 2>&1; then
         ok "merge-guard: registered in ~/.claude/settings.json"

@@ -133,6 +133,16 @@ printf '%s\n' "$summary" | grep -q "Merge-gate active" && ok "prints after regis
 SKIP_HOOKS=1
 out=$(merge_gate_summary 2>&1 || true)
 [ -z "$out" ] && ok "silent with --skip-hooks" || no "printed with --skip-hooks"
+setup
+TARGET=codex
+register_merge_gate_hook >/dev/null 2>&1
+out=$(merge_gate_summary 2>&1 || true)
+[ -z "$out" ] && ok "silent for codex-only target" || no "printed for codex target"
+setup
+printf '%s' 'bad{{' > "$SETTINGS"
+register_merge_gate_hook >/dev/null 2>&1
+out=$(merge_gate_summary 2>&1 || true)
+[ -z "$out" ] && ok "silent when settings.json unparseable (registration skipped)" || no "printed despite skipped registration"
 
 printf '\nRESULT: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
