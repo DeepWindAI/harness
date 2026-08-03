@@ -63,7 +63,10 @@ if [ "${AGENT_APPROVE_DRYRUN:-0}" = "1" ]; then
 fi
 
 REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
-BODY=$(printf '🤖 **Specialist agent code review** (`pr-review-toolkit:code-reviewer`) — recorded as the `reviewed:code` merge-gate signal (CLAUDE.md #31).\n\n---\n\n%s' "$VERDICT")
+# Scannable evidence comment: verdict headline up top, what the label means, and the
+# full review folded into a <details> block so the PR thread stays readable.
+# shellcheck disable=SC2016  # backticks are literal markdown code-spans, not expansions
+BODY=$(printf '## 🔒 Specialist code review — recorded\n\n**Verdict:** %s\n\nA separate specialist agent (not the author of this change) reviewed this PR. The `reviewed:code` label is now applied — the merge-gate signal that lets `guarded-merge.sh` merge this security-sensitive change (CLAUDE.md #31). This is an auditable assertion that review happened, not branch protection.\n\n<details>\n<summary>Full review verdict</summary>\n\n%s\n\n</details>\n' "$HEADLINE" "$VERDICT")
 
 gh pr comment "$PR" --repo "$REPO" --body "$BODY" >/dev/null
 gh pr edit  "$PR" --repo "$REPO" --add-label 'reviewed:code' >/dev/null

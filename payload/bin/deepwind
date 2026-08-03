@@ -230,6 +230,31 @@ cmd_doctor() {
     warn "session-start hook not installed at $hook (banner won't fire on Claude Code start)"
   fi
 
+  # 4b. Merge-guard hook (blocks self-merging an unreviewed, security-sensitive PR)
+  local mg_hook="$HOME/.claude/hooks/pre-bash-merge-guard.sh"
+  local settings="$HOME/.claude/settings.json"
+  if [[ -x "$mg_hook" ]]; then
+    ok "merge-guard hook: present + executable"
+    if [[ -f "$settings" ]] && command -v jq >/dev/null 2>&1; then
+      if jq -e --arg c "$mg_hook" \
+        '[ (.hooks.PreToolUse // [])[]? | (.hooks // [])[]? | .command? ] | any(. == $c)' \
+        "$settings" >/dev/null 2>&1; then
+        ok "merge-guard: registered in ~/.claude/settings.json"
+      else
+        warn "merge-guard hook present but NOT registered in $settings — it won't fire (re-run the installer)"
+      fi
+    else
+      warn "skipping merge-guard registration check (settings.json missing or jq unavailable)"
+    fi
+  else
+    warn "merge-guard hook not installed (raw 'gh pr merge' of a sensitive PR is not gated)"
+  fi
+  if [[ -x "$HOME/.deepwind/bin/guarded-merge.sh" ]]; then
+    ok "merge-gate helper: guarded-merge.sh"
+  else
+    warn "guarded-merge.sh not found in ~/.deepwind/bin"
+  fi
+
   # 5. PATH check for ourselves
   if command -v deepwind >/dev/null 2>&1; then
     ok "deepwind CLI on PATH: $(command -v deepwind)"

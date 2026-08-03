@@ -121,5 +121,18 @@ register_merge_gate_hook >/dev/null 2>&1
 rollback_transaction >/dev/null 2>&1
 [ "$(sha256_file "$SETTINGS")" = "$prior" ] && ok "rollback restored prior settings.json" || no "rollback did not restore"
 
+echo "9. merge_gate_summary prints only when the gate is active"
+setup
+out=$(merge_gate_summary 2>&1 || true)
+[ -z "$out" ] && ok "silent before registration" || no "printed before registration"
+register_merge_gate_hook >/dev/null 2>&1
+# Capture then grep — piping a multi-line producer into `grep -q` under pipefail makes
+# the producer take SIGPIPE after the first match, failing the pipe despite the match.
+summary=$(merge_gate_summary 2>&1 || true)
+printf '%s\n' "$summary" | grep -q "Merge-gate active" && ok "prints after registration" || no "did not print after registration"
+SKIP_HOOKS=1
+out=$(merge_gate_summary 2>&1 || true)
+[ -z "$out" ] && ok "silent with --skip-hooks" || no "printed with --skip-hooks"
+
 printf '\nRESULT: %s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
