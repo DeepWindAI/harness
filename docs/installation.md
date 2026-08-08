@@ -128,3 +128,34 @@ script with your privileges — a repository-controlled surface, though a hostil
 repository could already ship a no-op hook, so this grants it nothing it does not
 already have. To pin the installed copy regardless of the repository, set
 `DEEPWIND_CHECK_SENSITIVE` to its path.
+
+## Optional bridge CLI
+
+Add `--with-bridge` to also install the DeepWind bridge CLI:
+
+```sh
+curl -fsSL https://deepwind.ai/install | bash -s -- --with-bridge
+```
+
+This step runs **after** the signed release transaction has already committed,
+and it is a plain `npm i -g @deepwind/bridge` — a live network call to the npm
+registry. It is **not covered by the release's GPG signature**: the signature
+verifies only the claude/codex archives staged from the release manifest, not
+this npm package. Requirements: Node.js >=22, `npm`, and network access to the
+npm registry.
+
+Failure is always non-fatal. If `npm`/`node` are missing, Node is too old, or
+the `npm install` itself fails (offline, registry error, permissions), the
+installer prints a warning and the harness install it just completed is
+unaffected — nothing about the signed transaction is touched, retried, or
+rolled back on account of this step. Install it by hand at any time with:
+
+```sh
+npm i -g @deepwind/bridge
+```
+
+After it installs, authenticate and register with `pm33-bridge login && pm33-bridge register`.
+
+`--with-bridge` requires a real install (it cannot be combined with `--dry-run`
+or `--check`) and is independent of `--target`: it installs the same way
+regardless of whether you chose `claude`, `codex`, or `both`.
