@@ -206,6 +206,34 @@ EOF
   chmod 755 "$FIXTURE_ROOT/bin/codex"
 }
 
+write_fixture_node_stub() {
+  fixture_node_major=${1:-22}
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -eu' \
+    ': "${HOME:?}"' \
+    'printf "%s\n" "$*" >> "$HOME/node-calls"' \
+    "printf '%s\\n' '$fixture_node_major'" \
+    > "$FIXTURE_ROOT/bin/node"
+  chmod 755 "$FIXTURE_ROOT/bin/node"
+}
+
+write_fixture_npm_stub() {
+  fixture_npm_outcome=${1:-success}
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -eu' \
+    ': "${HOME:?}"' \
+    'printf "%s\n" "$*" >> "$HOME/npm-calls"' \
+    > "$FIXTURE_ROOT/bin/npm"
+  if [ "$fixture_npm_outcome" = success ]; then
+    printf '%s\n' 'exit 0' >> "$FIXTURE_ROOT/bin/npm"
+  else
+    printf '%s\n' 'exit 1' >> "$FIXTURE_ROOT/bin/npm"
+  fi
+  chmod 755 "$FIXTURE_ROOT/bin/npm"
+}
+
 refresh_claude_fixture_archive() {
   claude_archive="$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz"
   tar -C "$FIXTURE_RELEASE/claude" -czf "$claude_archive" agents skills
