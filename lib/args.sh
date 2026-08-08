@@ -13,6 +13,7 @@ usage: deepwind-init.sh [options]
   --skip-hooks                do not install Claude session hooks
   --enable-codex-plugin       opt in to enabling the verified Codex plugin
   --configure-mcp             interactively configure Codex MCP after install
+  --with-bridge               best-effort install the DeepWind bridge CLI (npm) after install
   -h, --help
 EOF
 }
@@ -26,6 +27,7 @@ parse_args() {
   SKIP_HOOKS=0
   ENABLE_CODEX_PLUGIN=0
   CONFIGURE_MCP=0
+  WITH_BRIDGE=0
 
   while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -70,6 +72,10 @@ parse_args() {
         CONFIGURE_MCP=1
         shift
         ;;
+      --with-bridge)
+        WITH_BRIDGE=1
+        shift
+        ;;
       -h|--help)
         usage
         exit 0
@@ -93,6 +99,9 @@ parse_args() {
   fi
   if [ "$ENABLE_CODEX_PLUGIN" -eq 1 ] && [ "$TARGET" = claude ]; then
     die "--enable-codex-plugin requires target codex or both"
+  fi
+  if [ "$WITH_BRIDGE" -eq 1 ] && [ "$MODE" != install ]; then
+    die "--with-bridge cannot be combined with --dry-run or --check"
   fi
   if [ -n "$VERSION" ]; then
     printf '%s' "$VERSION" | grep -Eq \
