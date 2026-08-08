@@ -234,6 +234,74 @@ write_fixture_npm_stub() {
   chmod 755 "$FIXTURE_ROOT/bin/npm"
 }
 
+write_fixture_timeout_stub() {
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -eu' \
+    ': "${HOME:?}"' \
+    'printf "%s\n" "$*" >> "$HOME/timeout-calls"' \
+    'fixture_timeout_seconds=$1' \
+    'shift' \
+    'exec "$@"' \
+    > "$FIXTURE_ROOT/bin/timeout"
+  chmod 755 "$FIXTURE_ROOT/bin/timeout"
+}
+
+# Build a directory containing only the external tools the standalone
+# installer requires (release/build-installer.sh's need_command list),
+# resolved from whatever is actually on the host's PATH, but deliberately
+# excluding any binary named `timeout` or `gtimeout`. This lets a test force
+# the "no timeout binary available" fallback deterministically, regardless of
+# whether the host running the suite has GNU coreutils `timeout` (common on
+# Linux) or Homebrew's `gtimeout` (common on macOS with coreutils installed)
+# on its real PATH.
+write_fixture_toolchain_without_timeout() {
+  FIXTURE_TOOLCHAIN="$FIXTURE_ROOT/toolchain-no-timeout"
+  mkdir -p "$FIXTURE_TOOLCHAIN"
+  # Mirror EVERY executable on the real PATH into the curated dir, EXCEPT
+  # `timeout`/`gtimeout`. This makes the fixture's premise literally true — the
+  # installer has its full, normal toolchain and only the timeout binaries are
+  # absent — instead of a hand-maintained allowlist that silently starves the
+  # installer (and fails this test) the moment it starts using one more tool.
+  local fixture_pc_dir fixture_pc_bin fixture_pc_name
+  local -a fixture_pc_dirs
+  IFS=':' read -ra fixture_pc_dirs <<< "$PATH"
+  for fixture_pc_dir in "${fixture_pc_dirs[@]}"; do
+    { [ -n "$fixture_pc_dir" ] && [ -d "$fixture_pc_dir" ]; } || continue
+    for fixture_pc_bin in "$fixture_pc_dir"/*; do
+      { [ -f "$fixture_pc_bin" ] && [ -x "$fixture_pc_bin" ]; } || continue
+      fixture_pc_name=${fixture_pc_bin##*/}
+      case "$fixture_pc_name" in
+        timeout|gtimeout) continue ;;
+      esac
+      # First occurrence wins (mirrors real PATH precedence); never clobber.
+      [ -e "$FIXTURE_TOOLCHAIN/$fixture_pc_name" ] || \
+        ln -s "$fixture_pc_bin" "$FIXTURE_TOOLCHAIN/$fixture_pc_name" 2>/dev/null || true
+    done
+  done
+  # Guard the invariant this fixture exists to create.
+  if [ -e "$FIXTURE_TOOLCHAIN/timeout" ] || [ -e "$FIXTURE_TOOLCHAIN/gtimeout" ]; then
+    printf 'fixture setup: timeout/gtimeout leaked into the no-timeout toolchain\n' >&2
+    return 1
+  fi
+}
+
+# Like run_fixture_installer, but PATH is fully replaced (no fallback to the
+# host's real PATH) by $FIXTURE_ROOT/bin plus a curated toolchain directory
+# that never contains `timeout`/`gtimeout`. Use this to assert best-effort
+# post-commit network steps still run and still succeed/warn as before when
+# no timeout binary exists anywhere on PATH.
+run_fixture_installer_without_timeout() {
+  write_fixture_toolchain_without_timeout
+  env \
+    HOME="$FIXTURE_HOME" \
+    TMPDIR="$FIXTURE_HOME/tmp" \
+    PATH="$FIXTURE_ROOT/bin:$FIXTURE_TOOLCHAIN" \
+    DEEPWIND_INSTALL_TESTING=1 \
+    DEEPWIND_RELEASE_DIR="$FIXTURE_RELEASE" \
+    bash "$FIXTURE_INSTALLER" --version 1.2.3 "$@"
+}
+
 refresh_claude_fixture_archive() {
   claude_archive="$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz"
   tar -C "$FIXTURE_RELEASE/claude" -czf "$claude_archive" agents skills
