@@ -258,23 +258,31 @@ write_fixture_timeout_stub() {
 write_fixture_toolchain_without_timeout() {
   FIXTURE_TOOLCHAIN="$FIXTURE_ROOT/toolchain-no-timeout"
   mkdir -p "$FIXTURE_TOOLCHAIN"
-  for fixture_toolchain_tool in \
-    bash id realpath stat mktemp jq tar awk sed grep \
-    cp mv chmod mkdir rmdir rm find df sort base64 date tr wc; do
-    fixture_toolchain_resolved=$(command -v "$fixture_toolchain_tool") || {
-      printf 'fixture setup: %s is required but not on PATH\n' "$fixture_toolchain_tool" >&2
-      return 1
-    }
-    ln -s "$fixture_toolchain_resolved" "$FIXTURE_TOOLCHAIN/$fixture_toolchain_tool"
+  # Mirror EVERY executable on the real PATH into the curated dir, EXCEPT
+  # `timeout`/`gtimeout`. This makes the fixture's premise literally true — the
+  # installer has its full, normal toolchain and only the timeout binaries are
+  # absent — instead of a hand-maintained allowlist that silently starves the
+  # installer (and fails this test) the moment it starts using one more tool.
+  local fixture_pc_dir fixture_pc_bin fixture_pc_name
+  local -a fixture_pc_dirs
+  IFS=':' read -ra fixture_pc_dirs <<< "$PATH"
+  for fixture_pc_dir in "${fixture_pc_dirs[@]}"; do
+    [ -n "$fixture_pc_dir" ] && [ -d "$fixture_pc_dir" ] || continue
+    for fixture_pc_bin in "$fixture_pc_dir"/*; do
+      [ -f "$fixture_pc_bin" ] && [ -x "$fixture_pc_bin" ] || continue
+      fixture_pc_name=${fixture_pc_bin##*/}
+      case "$fixture_pc_name" in
+        timeout|gtimeout) continue ;;
+      esac
+      # First occurrence wins (mirrors real PATH precedence); never clobber.
+      [ -e "$FIXTURE_TOOLCHAIN/$fixture_pc_name" ] || \
+        ln -s "$fixture_pc_bin" "$FIXTURE_TOOLCHAIN/$fixture_pc_name" 2>/dev/null || true
+    done
   done
-  if fixture_toolchain_resolved=$(command -v sha256sum 2>/dev/null); then
-    ln -s "$fixture_toolchain_resolved" "$FIXTURE_TOOLCHAIN/sha256sum"
-  else
-    fixture_toolchain_resolved=$(command -v shasum) || {
-      printf 'fixture setup: sha256sum/shasum is required but not on PATH\n' >&2
-      return 1
-    }
-    ln -s "$fixture_toolchain_resolved" "$FIXTURE_TOOLCHAIN/shasum"
+  # Guard the invariant this fixture exists to create.
+  if [ -e "$FIXTURE_TOOLCHAIN/timeout" ] || [ -e "$FIXTURE_TOOLCHAIN/gtimeout" ]; then
+    printf 'fixture setup: timeout/gtimeout leaked into the no-timeout toolchain\n' >&2
+    return 1
   fi
 }
 
