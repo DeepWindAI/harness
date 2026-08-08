@@ -267,9 +267,9 @@ write_fixture_toolchain_without_timeout() {
   local -a fixture_pc_dirs
   IFS=':' read -ra fixture_pc_dirs <<< "$PATH"
   for fixture_pc_dir in "${fixture_pc_dirs[@]}"; do
-    [ -n "$fixture_pc_dir" ] && [ -d "$fixture_pc_dir" ] || continue
+    { [ -n "$fixture_pc_dir" ] && [ -d "$fixture_pc_dir" ]; } || continue
     for fixture_pc_bin in "$fixture_pc_dir"/*; do
-      [ -f "$fixture_pc_bin" ] && [ -x "$fixture_pc_bin" ] || continue
+      { [ -f "$fixture_pc_bin" ] && [ -x "$fixture_pc_bin" ]; } || continue
       fixture_pc_name=${fixture_pc_bin##*/}
       case "$fixture_pc_name" in
         timeout|gtimeout) continue ;;
