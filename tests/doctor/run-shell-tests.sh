@@ -267,4 +267,64 @@ ln -s "$TMP/bin/jq" "$TMP_BIN_NO_TIMEOUT/jq"
 [ "$(sed -n '2p' "$CODEX_CALL_LOG")" = 'mcp login deepwind' ] \
   || fail 'Codex OAuth login did not run when no timeout binary was available'
 
+# --- Doctor bridge-CLI awareness -------------------------------------------
+# doctor() reports a "bridge" component line symmetric with the existing
+# "mcp" line: whether the bridge CLI (`pm33-bridge`/`bridge`) is on PATH, its
+# version if available, and whether ~/.pm33/bridge.json (the bridge CLI's own
+# persisted config; see lib/doctor.sh for the source citation) carries a
+# non-empty apiToken. Everything here is local: no network call, and doctor
+# never reports "connected" since that requires a live round trip.
+BRIDGE_HOME_NONE="$TMP/bridge-home-none"
+BRIDGE_HOME_REGISTERED="$TMP/bridge-home-registered"
+BRIDGE_HOME_EMPTY_TOKEN="$TMP/bridge-home-empty-token"
+mkdir -p "$BRIDGE_HOME_NONE" \
+  "$BRIDGE_HOME_REGISTERED/.pm33" \
+  "$BRIDGE_HOME_EMPTY_TOKEN/.pm33"
+printf '%s\n' '{"apiUrl":"https://app.deepwind.ai","apiToken":"tok_abc123","workspaceDir":"/tmp/pm33-bridge"}' \
+  > "$BRIDGE_HOME_REGISTERED/.pm33/bridge.json"
+printf '%s\n' '{"apiUrl":"https://app.deepwind.ai","apiToken":"","workspaceDir":"/tmp/pm33-bridge"}' \
+  > "$BRIDGE_HOME_EMPTY_TOKEN/.pm33/bridge.json"
+
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'case "$*" in' \
+  '  "--version") printf "%s\n" "0.1.0" ;;' \
+  '  *) printf "unexpected argv\n" >&2; exit 91 ;;' \
+  'esac' > "$TMP/bin/pm33-bridge"
+chmod 755 "$TMP/bin/pm33-bridge"
+
+HOME="$BRIDGE_HOME_NONE" PATH="$TMP/empty-bin" doctor claude \
+  > "$TMP/bridge-not-installed.out" 2>&1 \
+  || fail 'doctor failed when the bridge CLI is not installed'
+rg -q '"target":"installer","component":"bridge","status":"not-installed","registered":false' \
+  "$TMP/bridge-not-installed.out" \
+  || fail 'doctor did not report the bridge CLI as not-installed'
+if rg -q '"component":"bridge"[^}]*"version"' "$TMP/bridge-not-installed.out"; then
+  fail 'doctor reported a bridge version when the CLI is not installed'
+fi
+
+HOME="$BRIDGE_HOME_REGISTERED" PATH="$TMP/bin" doctor claude \
+  > "$TMP/bridge-registered.out" 2>&1 \
+  || fail 'doctor failed when the bridge CLI is installed and registered'
+rg -q '"target":"installer","component":"bridge","status":"installed","version":"0.1.0","registered":true' \
+  "$TMP/bridge-registered.out" \
+  || fail 'doctor did not report the bridge CLI as installed, versioned, and registered'
+if rg -q 'tok_abc123' "$TMP/bridge-registered.out"; then
+  fail 'doctor leaked the bridge API token'
+fi
+
+HOME="$BRIDGE_HOME_EMPTY_TOKEN" PATH="$TMP/bin" doctor claude \
+  > "$TMP/bridge-installed-unregistered.out" 2>&1 \
+  || fail 'doctor failed when the bridge CLI is installed but unregistered'
+rg -q '"target":"installer","component":"bridge","status":"installed","version":"0.1.0","registered":false' \
+  "$TMP/bridge-installed-unregistered.out" \
+  || fail 'doctor did not report an installed-but-unregistered bridge CLI as unregistered'
+
+HOME="$BRIDGE_HOME_NONE" PATH="$TMP/bin" doctor claude \
+  > "$TMP/bridge-installed-no-config.out" 2>&1 \
+  || fail 'doctor failed when the bridge CLI is installed with no local config'
+rg -q '"target":"installer","component":"bridge","status":"installed","version":"0.1.0","registered":false' \
+  "$TMP/bridge-installed-no-config.out" \
+  || fail 'doctor did not report registered:false when no bridge config file exists'
+
 printf 'PASS: MCP onboarding and doctor security tests\n'

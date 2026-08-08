@@ -1504,6 +1504,46 @@ codex_mcp_status() {
   } | classify_codex_mcp_stream
 }
 
+# Local-only bridge CLI diagnostics, symmetric with codex_mcp_status above:
+# no network calls, no mutation. Sets BRIDGE_STATUS (installed|not-installed),
+# BRIDGE_VERSION (empty when unknown), and BRIDGE_REGISTERED (true|false) for
+# doctor() to report. "Registered" means a local token was persisted by
+# `pm33-bridge login`/`register`, not that a live connection exists — doctor
+# cannot verify that without a network round trip, so it never reports
+# "connected".
+bridge_cli_status() {
+  BRIDGE_STATUS=not-installed
+  BRIDGE_VERSION=
+  BRIDGE_REGISTERED=false
+
+  bridge_bin=
+  if command -v pm33-bridge >/dev/null 2>&1; then
+    bridge_bin=pm33-bridge
+  elif command -v bridge >/dev/null 2>&1; then
+    bridge_bin=bridge
+  fi
+
+  if [ -n "$bridge_bin" ]; then
+    BRIDGE_STATUS=installed
+    BRIDGE_VERSION=$("$bridge_bin" --version 2>/dev/null | awk 'NR == 1' | tr -d '[:space:]')
+    case "$BRIDGE_VERSION" in
+      ''|*[!A-Za-z0-9._+-]*) BRIDGE_VERSION= ;;
+    esac
+  fi
+
+  # ~/.pm33/bridge.json is the bridge CLI's own persisted config (its
+  # config.js reads apiUrl/apiToken/workspaceDir from this exact path).
+  # A non-empty apiToken means `login`/`register` completed at some point;
+  # it says nothing about whether that token is still valid.
+  bridge_config="${HOME:-}/.pm33/bridge.json"
+  if [ -n "${HOME:-}" ] && [ -f "$bridge_config" ] && [ ! -L "$bridge_config" ] \
+    && command -v jq >/dev/null 2>&1 \
+    && jq -e '(.apiToken // "") | length > 0' "$bridge_config" >/dev/null 2>&1; then
+    BRIDGE_REGISTERED=true
+  fi
+  return 0
+}
+
 doctor() {
   doctor_target=$1
   case "$doctor_target" in
@@ -1531,6 +1571,14 @@ doctor() {
   else
     printf '%s\n' \
       '{"target":"installer","component":"recovery","status":"unavailable","count":0}'
+  fi
+  bridge_cli_status
+  if [ -n "$BRIDGE_VERSION" ]; then
+    printf '{"target":"installer","component":"bridge","status":"%s","version":"%s","registered":%s}\n' \
+      "$BRIDGE_STATUS" "$BRIDGE_VERSION" "$BRIDGE_REGISTERED"
+  else
+    printf '{"target":"installer","component":"bridge","status":"%s","registered":%s}\n' \
+      "$BRIDGE_STATUS" "$BRIDGE_REGISTERED"
   fi
   return 0
 }
