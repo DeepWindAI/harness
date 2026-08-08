@@ -55,11 +55,13 @@ bridge_cli_status() {
   BRIDGE_VERSION=
   BRIDGE_REGISTERED=false
 
+  # Probe ONLY the unambiguous `pm33-bridge` bin, never the generic `bridge`:
+  # @deepwind/bridge installs both, but `bridge` collides with iproute2's
+  # /usr/sbin/bridge on Linux, which would make doctor falsely report the
+  # DeepWind bridge as installed. pm33-bridge is present whenever our bridge is.
   bridge_bin=
   if command -v pm33-bridge >/dev/null 2>&1; then
     bridge_bin=pm33-bridge
-  elif command -v bridge >/dev/null 2>&1; then
-    bridge_bin=bridge
   fi
 
   if [ -n "$bridge_bin" ]; then
