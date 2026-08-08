@@ -12,6 +12,7 @@ BRIDGE_NPM_PACKAGE=@deepwind/bridge
 BRIDGE_MIN_NODE_MAJOR=22
 
 maybe_install_bridge() {
+  local bridge_node_major
   if ! command -v npm >/dev/null 2>&1; then
     warn "bridge install skipped: npm was not found on PATH (install Node >=$BRIDGE_MIN_NODE_MAJOR, then run: npm i -g $BRIDGE_NPM_PACKAGE)"
     return 0
