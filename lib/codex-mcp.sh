@@ -60,13 +60,13 @@ configure_codex_mcp() {
   fi
 
   _mcp_info 'Configuring DeepWind for the interactive Codex coordinator.'
-  if ! codex mcp add "$DEEPWIND_STAGING_ALIAS" \
+  if ! run_with_net_timeout codex mcp add "$DEEPWIND_STAGING_ALIAS" \
     --url "$DEEPWIND_STAGING_URL" >/dev/null 2>&1; then
-    _mcp_warn 'Codex could not register the DeepWind staging connector; installed files are unchanged.'
+    _mcp_warn 'Codex could not register the DeepWind staging connector (or timed out); installed files are unchanged.'
     return 6
   fi
-  if ! codex mcp login "$DEEPWIND_STAGING_ALIAS" >/dev/null 2>&1; then
-    _mcp_warn 'DeepWind OAuth did not complete; rerun with --configure-mcp when ready.'
+  if ! run_with_net_timeout codex mcp login "$DEEPWIND_STAGING_ALIAS" >/dev/null 2>&1; then
+    _mcp_warn 'DeepWind OAuth did not complete (or timed out); rerun with --configure-mcp when ready.'
     return 7
   fi
   _mcp_info 'DeepWind MCP is registered for this interactive Codex user.'

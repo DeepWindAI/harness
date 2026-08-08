@@ -234,6 +234,66 @@ write_fixture_npm_stub() {
   chmod 755 "$FIXTURE_ROOT/bin/npm"
 }
 
+write_fixture_timeout_stub() {
+  printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    'set -eu' \
+    ': "${HOME:?}"' \
+    'printf "%s\n" "$*" >> "$HOME/timeout-calls"' \
+    'fixture_timeout_seconds=$1' \
+    'shift' \
+    'exec "$@"' \
+    > "$FIXTURE_ROOT/bin/timeout"
+  chmod 755 "$FIXTURE_ROOT/bin/timeout"
+}
+
+# Build a directory containing only the external tools the standalone
+# installer requires (release/build-installer.sh's need_command list),
+# resolved from whatever is actually on the host's PATH, but deliberately
+# excluding any binary named `timeout` or `gtimeout`. This lets a test force
+# the "no timeout binary available" fallback deterministically, regardless of
+# whether the host running the suite has GNU coreutils `timeout` (common on
+# Linux) or Homebrew's `gtimeout` (common on macOS with coreutils installed)
+# on its real PATH.
+write_fixture_toolchain_without_timeout() {
+  FIXTURE_TOOLCHAIN="$FIXTURE_ROOT/toolchain-no-timeout"
+  mkdir -p "$FIXTURE_TOOLCHAIN"
+  for fixture_toolchain_tool in \
+    bash id realpath stat mktemp jq tar awk sed grep \
+    cp mv chmod mkdir rmdir rm find df sort base64 date tr wc; do
+    fixture_toolchain_resolved=$(command -v "$fixture_toolchain_tool") || {
+      printf 'fixture setup: %s is required but not on PATH\n' "$fixture_toolchain_tool" >&2
+      return 1
+    }
+    ln -s "$fixture_toolchain_resolved" "$FIXTURE_TOOLCHAIN/$fixture_toolchain_tool"
+  done
+  if fixture_toolchain_resolved=$(command -v sha256sum 2>/dev/null); then
+    ln -s "$fixture_toolchain_resolved" "$FIXTURE_TOOLCHAIN/sha256sum"
+  else
+    fixture_toolchain_resolved=$(command -v shasum) || {
+      printf 'fixture setup: sha256sum/shasum is required but not on PATH\n' >&2
+      return 1
+    }
+    ln -s "$fixture_toolchain_resolved" "$FIXTURE_TOOLCHAIN/shasum"
+  fi
+}
+
+# Like run_fixture_installer, but PATH is fully replaced (no fallback to the
+# host's real PATH) by $FIXTURE_ROOT/bin plus a curated toolchain directory
+# that never contains `timeout`/`gtimeout`. Use this to assert best-effort
+# post-commit network steps still run and still succeed/warn as before when
+# no timeout binary exists anywhere on PATH.
+run_fixture_installer_without_timeout() {
+  write_fixture_toolchain_without_timeout
+  env \
+    HOME="$FIXTURE_HOME" \
+    TMPDIR="$FIXTURE_HOME/tmp" \
+    PATH="$FIXTURE_ROOT/bin:$FIXTURE_TOOLCHAIN" \
+    DEEPWIND_INSTALL_TESTING=1 \
+    DEEPWIND_RELEASE_DIR="$FIXTURE_RELEASE" \
+    bash "$FIXTURE_INSTALLER" --version 1.2.3 "$@"
+}
+
 refresh_claude_fixture_archive() {
   claude_archive="$FIXTURE_RELEASE/deepwind-harness-claude-v1.2.3.tar.gz"
   tar -C "$FIXTURE_RELEASE/claude" -czf "$claude_archive" agents skills

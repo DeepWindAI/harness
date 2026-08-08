@@ -1288,6 +1288,37 @@ enable_codex_plugin() {
   info "Codex plugin enabled: $DEEPWIND_CODEX_PLUGIN_ID $VERSION"
 }
 
+# ---- lib/net-timeout.sh ----
+# shellcheck shell=bash
+# Portable best-effort timeout wrapper for post-commit network steps.
+#
+# maybe_install_bridge (lib/bridge-install.sh) and the Codex MCP registration
+# and OAuth calls (lib/codex-mcp.sh) both run only after apply_transaction has
+# committed the signed, journaled release install. A true network hang in
+# either call blocks the installer at the very end even though nothing is
+# corrupted (the transaction already committed). Wrapping those calls with a
+# timeout turns an indefinite hang into a bounded, warn-and-continue failure
+# like any other best-effort post-commit step.
+#
+# `timeout` is GNU coreutils and is not guaranteed to exist: macOS ships bash
+# 3.2 with no `timeout` binary unless GNU coreutils is installed via Homebrew
+# (which provides it as `gtimeout` to avoid clobbering the BSD userland). This
+# helper degrades gracefully across three cases and must never itself be the
+# reason a best-effort step fails: `timeout` if present, else `gtimeout` if
+# present, else run the command with no timeout at all.
+
+NET_TIMEOUT_SECONDS=120
+
+run_with_net_timeout() {
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$NET_TIMEOUT_SECONDS" "$@"
+  elif command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "$NET_TIMEOUT_SECONDS" "$@"
+  else
+    "$@"
+  fi
+}
+
 # ---- lib/bridge-install.sh ----
 # shellcheck shell=bash disable=SC2034
 # Opt-in, best-effort installation of the DeepWind bridge CLI via npm.
@@ -1326,10 +1357,10 @@ maybe_install_bridge() {
   fi
 
   info "Installing the DeepWind bridge CLI ($BRIDGE_NPM_PACKAGE)..."
-  if npm i -g "$BRIDGE_NPM_PACKAGE" >/dev/null 2>&1; then
+  if run_with_net_timeout npm i -g "$BRIDGE_NPM_PACKAGE" >/dev/null 2>&1; then
     info "DeepWind bridge CLI installed. Next: pm33-bridge login && pm33-bridge register"
   else
-    warn "bridge install failed (npm/network); the harness install is unaffected. Retry manually with: npm i -g $BRIDGE_NPM_PACKAGE"
+    warn "bridge install failed (npm/network, or timed out after ${NET_TIMEOUT_SECONDS}s); the harness install is unaffected. Retry manually with: npm i -g $BRIDGE_NPM_PACKAGE"
   fi
   return 0
 }
@@ -1397,13 +1428,13 @@ configure_codex_mcp() {
   fi
 
   _mcp_info 'Configuring DeepWind for the interactive Codex coordinator.'
-  if ! codex mcp add "$DEEPWIND_STAGING_ALIAS" \
+  if ! run_with_net_timeout codex mcp add "$DEEPWIND_STAGING_ALIAS" \
     --url "$DEEPWIND_STAGING_URL" >/dev/null 2>&1; then
-    _mcp_warn 'Codex could not register the DeepWind staging connector; installed files are unchanged.'
+    _mcp_warn 'Codex could not register the DeepWind staging connector (or timed out); installed files are unchanged.'
     return 6
   fi
-  if ! codex mcp login "$DEEPWIND_STAGING_ALIAS" >/dev/null 2>&1; then
-    _mcp_warn 'DeepWind OAuth did not complete; rerun with --configure-mcp when ready.'
+  if ! run_with_net_timeout codex mcp login "$DEEPWIND_STAGING_ALIAS" >/dev/null 2>&1; then
+    _mcp_warn 'DeepWind OAuth did not complete (or timed out); rerun with --configure-mcp when ready.'
     return 7
   fi
   _mcp_info 'DeepWind MCP is registered for this interactive Codex user.'

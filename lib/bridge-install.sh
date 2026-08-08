@@ -35,10 +35,10 @@ maybe_install_bridge() {
   fi
 
   info "Installing the DeepWind bridge CLI ($BRIDGE_NPM_PACKAGE)..."
-  if npm i -g "$BRIDGE_NPM_PACKAGE" >/dev/null 2>&1; then
+  if run_with_net_timeout npm i -g "$BRIDGE_NPM_PACKAGE" >/dev/null 2>&1; then
     info "DeepWind bridge CLI installed. Next: pm33-bridge login && pm33-bridge register"
   else
-    warn "bridge install failed (npm/network); the harness install is unaffected. Retry manually with: npm i -g $BRIDGE_NPM_PACKAGE"
+    warn "bridge install failed (npm/network, or timed out after ${NET_TIMEOUT_SECONDS}s); the harness install is unaffected. Retry manually with: npm i -g $BRIDGE_NPM_PACKAGE"
   fi
   return 0
 }
