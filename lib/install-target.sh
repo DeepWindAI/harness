@@ -26,10 +26,13 @@ map_destination() {
       ;;
     claude:payload/bin/check-sensitive-review.sh|\
     claude:payload/bin/guarded-merge.sh|\
-    claude:payload/bin/agent-approve.sh)
+    claude:payload/bin/agent-approve.sh|\
+    claude:payload/bin/gate-doctor.sh)
       # Merge-gate helper scripts — installed next to `deepwind` so guarded-merge.sh
       # finds check-sensitive-review.sh as a sibling and the hook can call them by
       # absolute path. Executable via the $BIN_DIR/* chmod-755 arm in transaction.sh.
+      # gate-doctor.sh is advisory-only (see docs/merge-gating.md); it does not
+      # participate in the guarded-merge.sh/hook decision path.
       printf '%s/%s\n' "$BIN_DIR" "${member#payload/bin/}"
       ;;
     claude:payload/mcp/*|claude:LICENSE|claude:VERSION)

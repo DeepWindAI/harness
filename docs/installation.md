@@ -66,7 +66,8 @@ Installed locations are:
 - Claude frameworks: `~/deepwind-frameworks/`
 - Claude command: `~/.deepwind/bin/deepwind`
 - Merge-gate helpers: `~/.deepwind/bin/guarded-merge.sh`,
-  `~/.deepwind/bin/check-sensitive-review.sh`, `~/.deepwind/bin/agent-approve.sh`
+  `~/.deepwind/bin/check-sensitive-review.sh`, `~/.deepwind/bin/agent-approve.sh`,
+  `~/.deepwind/bin/gate-doctor.sh`
 - Codex role TOMLs: `~/.codex/agents/`
 - Codex release-contained marketplace and plugin: `~/.deepwind/install/share/codex-marketplace/`
 - Installer state: `~/.deepwind/install/state.tsv`
@@ -106,7 +107,13 @@ self-merging an unreviewed, security-sensitive pull request. It has two parts:
   way to merge — it refuses a PR that touches sensitive paths without a review
   signal (an approving review or the `reviewed:code` label). `agent-approve.sh`
   records a specialist review as that signal, and `check-sensitive-review.sh` is
-  the shared decision engine.
+  the shared decision engine. `gate-doctor.sh <PR>` is a separate, advisory
+  preflight: it predicts a handful of cheap, common ways a real gate run is
+  about to waste its time (stale base, out-of-sync merge preview, a prior
+  failure at this exact commit, unreviewed deletions) in a few seconds, without
+  running anything expensive. It never affects a merge decision — see
+  [merge gating for agent fleets](merge-gating.md) for the principles behind
+  both parts and what to expect if you build your own.
 - A `PreToolUse` hook, `~/.claude/hooks/pre-bash-merge-guard.sh`, that blocks a
   raw `gh pr merge <PR>` for the same case. The installer registers it in
   `~/.claude/settings.json` idempotently: it adds one `PreToolUse` entry for the
