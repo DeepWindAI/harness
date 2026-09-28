@@ -144,4 +144,5 @@ merge_gate_summary() {
   info "  Sanctioned merge:   $BIN_DIR/guarded-merge.sh <PR>"
   info "  Raw 'gh pr merge' is gated by the PreToolUse hook (bypass: MERGE_GUARD=0)."
   info "  Each repo lists its sensitive paths in .deepwind/sensitive-paths (default if absent)."
+  info "  Preflight before an expensive gate run: $BIN_DIR/gate-doctor.sh <PR> (advisory, non-blocking)."
 }

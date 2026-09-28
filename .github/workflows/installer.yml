@@ -21,6 +21,7 @@ on:
       - 'tests/installer/**'
       - 'tests/plugin/**'
       - 'tests/doctor/**'
+      - 'tests/gate-doctor/**'
       - 'tests/docs/**'
       - 'tests/validate_codex_toml.py'
       - 'docs/**'
@@ -48,6 +49,7 @@ on:
       - 'tests/installer/**'
       - 'tests/plugin/**'
       - 'tests/doctor/**'
+      - 'tests/gate-doctor/**'
       - 'tests/docs/**'
       - 'tests/validate_codex_toml.py'
       - 'docs/**'
@@ -134,11 +136,12 @@ jobs:
           bash tests/plugin/assert-child-mcp-policy.sh
           bash tests/plugin/test-codex-plugin-lifecycle.sh
           bash tests/doctor/run-shell-tests.sh
+          bash tests/gate-doctor/run-shell-tests.sh
           bash tests/docs/test-installation-docs.sh
 
       - name: Run ShellCheck
         shell: bash
         run: |
-          shellcheck deepwind-init.sh lib/*.sh release/*.sh \
+          shellcheck deepwind-init.sh lib/*.sh release/*.sh payload/bin/*.sh \
             tests/installer/*.sh tests/installer/*.bash \
-            tests/plugin/*.sh tests/doctor/*.sh tests/docs/*.sh
+            tests/plugin/*.sh tests/doctor/*.sh tests/gate-doctor/*.sh tests/docs/*.sh
