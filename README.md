@@ -26,6 +26,7 @@ curl -fsSL https://deepwind.ai/install | bash -s -- --check
 - [Codex](docs/codex.md) — plugin and role placement, optional staging OAuth, and doctor results.
 - [Upgrading and removal](docs/upgrading.md) — checks, locally modified files, recovery, and safe disablement.
 - [MCP security](docs/mcp-security.md) — exact OAuth and privacy boundaries.
+- [Merge gating for agent fleets](docs/merge-gating.md) — the principles behind the installed merge-gate, and `gate-doctor.sh`.
 
 ## What is installed
 
@@ -33,8 +34,10 @@ Claude files are installed under `~/.claude` and supporting framework files
 under `~/deepwind-frameworks`. The Claude target also installs a merge-gate —
 `guarded-merge.sh` and its helpers under `~/.deepwind/bin`, plus a `PreToolUse`
 hook registered in `~/.claude/settings.json` — that stops a coordinator from
-self-merging an unreviewed, security-sensitive pull request (see
-[installation](docs/installation.md#merge-gate)). Codex receives a release-contained plugin
+self-merging an unreviewed, security-sensitive pull request, and
+`gate-doctor.sh`, an advisory preflight check for a gate run (see
+[installation](docs/installation.md#merge-gate) and
+[merge gating for agent fleets](docs/merge-gating.md)). Codex receives a release-contained plugin
 marketplace under `~/.deepwind/install/share/codex-marketplace` and four
 explicit role TOMLs under `~/.codex/agents`. Codex discovers the five formal
 `deepwind-*` workflows only through the enabled release-contained plugin, so
@@ -78,6 +81,7 @@ Run the portable validation suite from a checkout:
 ```sh
 tests/installer/run-shell-tests.sh
 tests/doctor/run-shell-tests.sh
+tests/gate-doctor/run-shell-tests.sh
 bash tests/plugin/test-codex-plugin.sh
 bash tests/docs/test-installation-docs.sh
 ```
